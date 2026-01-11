@@ -149,10 +149,10 @@ else:
                 c1, c2, c3 = st.columns(3)
                 with c1:
                     st.metric("📤 판매 정산금", f"{s_net:,.0f}원")
-                    st.caption(f"판매액:{s_total:,.0f} / 수수료14%:-{s_fee:,.0f}")
+                    st.caption(f"판매금액:{s_total:,.0f} / 수수료14%:-{s_fee:,.0f}")
                 with c2:
                     st.metric("📥 구매 청구금", f"{b_total_final:,.0f}원")
-                    st.caption(f"낙찰가:{b_total_raw:,.0f} / 수수료5%:+{b_fee:,.0f}")
+                    st.caption(f"구매금액:{b_total_raw:,.0f} / 수수료5%:+{b_fee:,.0f}")
                 with c3:
                     label = "💵 입금해드릴 돈" if final_balance > 0 else "📩 입금받을 돈"
                     st.metric(label, f"{abs(final_balance):,.0f}원")
@@ -173,4 +173,5 @@ else:
                         buy_disp.index += 1; buy_disp['가격'] = buy_disp['가격'].map('{:,.0f}'.format)
                         st.table(buy_disp)
                     else: st.write("구매 내역 없음")
+
 
