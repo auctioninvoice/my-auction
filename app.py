@@ -10,74 +10,34 @@ URL_MEMBERS = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/export?format=
 
 SELL_FEE_RATE = 0.14
 DEFAULT_BUY_FEE_RATE = 0.05
-# 🔒 접속 비밀번호 (원하시는 숫자로 바꾸세요!)
 APP_PASSWORD = "4989" 
 # ==========================================
-# ==========================================
 
-st.set_page_config(page_title="골동품사나이들 경매내역서 관리", layout="wide")
+st.set_page_config(page_title="골동품사나이들 관리자", layout="wide")
 
-# --- [추가] 폰트 크기 및 순번 너비 조절 CSS ---
+# --- 스타일 설정 ---
 st.markdown("""
-    
     <style>
-    /* 1. 전체 기본 폰트 설정 */
-    html, body, [class*="css"] {
-        font-size: 18px !important; 
+    html, body, [class*="css"] { font-size: 18px !important; }
+    .stTable { width: 100% !important; table-layout: auto !important; }
+    .stTable th { text-align: center !important; background-color: #f0f2f6; }
+    .stTable td:nth-child(1) { width: 45px !important; text-align: center !important; }
+    .stTable td:nth-child(2) { width: auto !important; min-width: 150px !important; text-align: left !important; }
+    .stTable td:nth-child(3) { 
+        width: 110px !important; text-align: center !important; 
+        white-space: nowrap !important; color: black !important; font-weight: bold;
+        font-size: clamp(14px, 2.8vw, 18px) !important;
     }
-
-    /* 2. 표 레이아웃 설정 */
-    .stTable {
-        width: 100% !important;
-        table-layout: auto !important;
-    }
-
-    /* 3. 표 헤더(품목, 가격, 구매자/판매자) 가운데 정렬 */
-    .stTable th {
-        text-align: center !important;
-        background-color: #f0f2f6; /* 헤더 배경색 살짝 넣어 구분감 부여 */
-    }
-
-    /* 4. 열별 너비 및 정렬 세부 설정 */
+    .stTable td:nth-child(4) { width: 90px !important; text-align: center !important; white-space: nowrap; }
+    [data-testid="stMetricValue"] { font-size: clamp(22px, 5vw, 32px) !important; }
     
-    /* [1열: 순번] 가운데 정렬 */
-    .stTable td:nth-child(1) {
-        width: 45px !important;
-        text-align: center !important;
-    }
-
-    /* [2열: 품목] 왼쪽 정렬 (품목은 왼쪽에서 시작하는 게 읽기 편함) */
-    .stTable td:nth-child(2) {
-        width: auto !important;
-        min-width: 150px !important;
-        text-align: left !important;
-    }
-
-    /* [3열: 가격] 가운데 정렬 + 검정색 + 줄바꿈 방지 */
-    .stTable td:nth-child(3) {
-        width: 110px !important; 
-        text-align: center !important; /* 모든 행 가운데 정렬 */
-        white-space: nowrap !important;
-        color: black !important;      /* 폰트색 검정 */
-        font-weight: bold;
-        font-size: clamp(14px, 2.8vw, 18px) !important; /* 자동 크기 조절 */
-    }
-
-    /* [4열: 구매자/판매자] 가운데 정렬 */
-    .stTable td:nth-child(4) {
-        width: 90px !important;
-        text-align: center !important;
-        white-space: nowrap;
-    }
-
-    /* 5. 표 내부 여백 조절 */
-    .stTable td, .stTable th {
-        padding: 8px 4px !important;
-    }
-    
-    /* 6. 메트릭(상단 카드) 글자 크기 */
-    [data-testid="stMetricValue"] {
-        font-size: clamp(22px, 5vw, 32px) !important;
+    /* 중앙 정렬용 스타일 */
+    .main-login {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        padding-top: 50px;
     }
     </style>
     """, unsafe_allow_html=True)
@@ -90,22 +50,49 @@ def load_data():
         df_auction['가격'] = pd.to_numeric(df_auction['가격'].astype(str).str.replace(',', ''), errors='coerce').fillna(0).astype(int)
         df_auction['경매일자'] = pd.to_datetime(df_auction['경매일자']).dt.date
         df_auction = df_auction.drop(columns=['낙찰시간'])
-        
         df_members = pd.read_csv(URL_MEMBERS)
         df_members.columns = ['닉네임', '이름', '전화번호', '주소', '수수료면제여부', '전미수', '금액']
         return df_auction, df_members
     except Exception as e:
         st.error(f"데이터 로드 실패: {e}")
         return None, None
-# --- [로그인 체크] ---
-st.sidebar.title("🔐 보안 접속")
-input_pw = st.sidebar.text_input("비밀번호를 입력하세요", type="password")
 
-if input_pw == APP_PASSWORD:
-    # 비밀번호가 맞을 때만 아래 코드 실행
+# --- 로그인 상태 관리 ---
+if 'logged_in' not in st.session_state:
+    st.session_state['logged_in'] = False
+
+# --- 로그인 화면 ---
+if not st.session_state['logged_in']:
+    empty1, col_login, empty2 = st.columns([1, 2, 1])
+    
+    with col_login:
+        st.write("")
+        st.write("")
+        st.markdown("<h1 style='text-align: center;'>🔐 보안 접속</h1>", unsafe_allow_html=True)
+        st.markdown("<p style='text-align: center;'>비밀번호를 입력해주세요</p>", unsafe_allow_html=True)
+        
+        input_pw = st.text_input("", type="password", placeholder="Password", label_visibility="collapsed")
+        login_btn = st.button("로그인", use_container_width=True)
+        
+        if login_btn:
+            if input_pw == APP_PASSWORD:
+                st.session_state['logged_in'] = True
+                st.rerun()
+            else:
+                st.error("비밀번호가 틀렸습니다.")
+        
+        st.markdown("<div style='text-align: center; font-size: 80px;'>🔓</div>", unsafe_allow_html=True)
+
+# --- 본 화면 (로그인 성공 시) ---
+else:
     df, df_members = load_data()
 
     if df is not None:
+        # 사이드바에 로그아웃 버튼 배치
+        if st.sidebar.button("로그아웃"):
+            st.session_state['logged_in'] = False
+            st.rerun()
+
         st.title("📜 골동품사나이들 경매내역서 조회")
         st.write("---")
 
@@ -121,7 +108,6 @@ if input_pw == APP_PASSWORD:
             selected_person = st.sidebar.selectbox(f"👤 2. 고객 선택 ({len(participants)}명)", participants)
 
             if selected_person:
-            # --- 회원정보 매칭 ---
                 member_row = df_members[df_members['닉네임'] == selected_person]
                 is_exempt = False
                 real_name, phone, address = "정보 미등록", "정보 미등록", "정보 미등록"
@@ -133,36 +119,27 @@ if input_pw == APP_PASSWORD:
                     phone = member_row.iloc[0]['전화번호']
                     address = member_row.iloc[0]['주소']
 
-                # --- 고객 정보 섹션 ---
                 st.markdown(f"## 👤 {selected_person} 님의 상세 정보")
                 info_col1, info_col2, info_col3 = st.columns([1, 1.2, 2.5])
-                with info_col1:
-                    st.markdown(f"**🏷️ 성함**\n{real_name}")
-                with info_col2:
-                    st.markdown(f"**📞 연락처**\n{phone}")
-                with info_col3:
-                    st.markdown(f"**🏠 주소**\n{address}")
-            
-                if is_exempt:
-                    st.success("✨ 수수료 면제 대상 회원입니다")
-            
+                with info_col1: st.markdown(f"**🏷️ 성함**\n{real_name}")
+                with info_col2: st.markdown(f"**📞 연락처**\n{phone}")
+                with info_col3: st.markdown(f"**🏠 주소**\n{address}")
+                
+                if is_exempt: st.success("✨ 수수료 면제 대상 회원입니다")
                 st.write("---")
 
-                # --- 정산 계산 ---
                 sell_data = date_df[date_df['판매자'] == selected_person].copy()
                 buy_data = date_df[date_df['구매자'] == selected_person].copy()
 
                 s_total = int(sell_data['가격'].sum())
                 s_fee = int(s_total * SELL_FEE_RATE)
                 s_net = s_total - s_fee
-
                 current_buy_rate = 0 if is_exempt else DEFAULT_BUY_FEE_RATE
                 b_total_raw = int(buy_data['가격'].sum())
                 b_fee = int(b_total_raw * current_buy_rate)
                 b_total_final = b_total_raw + b_fee
                 final_balance = s_net - b_total_final
 
-                # --- 요약 카드 ---
                 c1, c2, c3 = st.columns(3)
                 with c1:
                     st.metric("📤 판매 정산금", f"{s_net:,.0f}원")
@@ -175,8 +152,6 @@ if input_pw == APP_PASSWORD:
                     st.metric(label, f"{abs(final_balance):,.0f}원")
 
                 st.write("---")
-            
-                # --- 상세 내역 (순번 칸 너비 확보) ---
                 col1, col2 = st.columns(2)
                 with col1:
                     st.markdown("### [판매 내역]")
@@ -185,9 +160,7 @@ if input_pw == APP_PASSWORD:
                         sell_disp.index += 1
                         sell_disp['가격'] = sell_disp['가격'].map('{:,.0f}'.format)
                         st.table(sell_disp)
-                    else:
-                        st.write("판매 내역 없음")
-
+                    else: st.write("판매 내역 없음")
                 with col2:
                     st.markdown("### [구매 내역]")
                     if not buy_data.empty:
@@ -195,11 +168,4 @@ if input_pw == APP_PASSWORD:
                         buy_disp.index += 1
                         buy_disp['가격'] = buy_disp['가격'].map('{:,.0f}'.format)
                         st.table(buy_disp)
-                    else:
-                        st.write("구매 내역 없음")
-else:
-    # 비밀번호 입력 전 대기 화면
-    st.title("🔒 보호된 페이지입니다")
-    st.info("왼쪽 사이드바에 비밀번호를 입력하여 접속해주세요.")
-    st.image("https://cdn.pixabay.com/photo/2013/07/13/11/34/lock-158405_1280.png", width=100)
-
+                    else: st.write("구매 내역 없음")
