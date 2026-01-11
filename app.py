@@ -10,6 +10,9 @@ URL_MEMBERS = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/export?format=
 
 SELL_FEE_RATE = 0.14
 DEFAULT_BUY_FEE_RATE = 0.05
+# 🔒 접속 비밀번호 (원하시는 숫자로 바꾸세요!)
+APP_PASSWORD = "4989" 
+# ==========================================
 # ==========================================
 
 st.set_page_config(page_title="골동품사나이들 경매내역서 관리", layout="wide")
@@ -94,7 +97,12 @@ def load_data():
     except Exception as e:
         st.error(f"데이터 로드 실패: {e}")
         return None, None
+# --- [로그인 체크] ---
+st.sidebar.title("🔐 보안 접속")
+input_pw = st.sidebar.text_input("비밀번호를 입력하세요", type="password")
 
+if input_pw == APP_PASSWORD:
+    # 비밀번호가 맞을 때만 아래 코드 실행
 df, df_members = load_data()
 
 if df is not None:
