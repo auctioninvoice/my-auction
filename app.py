@@ -44,9 +44,8 @@ st.markdown("""
     
     [data-testid="stMetricValue"] { font-size: clamp(22px, 5vw, 32px) !important; color: black !important; }
 
-    /* --- 인쇄 시 적용되는 설정 (핵심) --- */
+    /* --- 인쇄 시 적용되는 설정 --- */
     @media print {
-        /* 사이드바, 헤더, 버튼 등 인쇄에서 제외 */
         [data-testid="stSidebar"], 
         [data-testid="stHeader"], 
         .stButton, 
@@ -54,15 +53,11 @@ st.markdown("""
         header { 
             display: none !important; 
         }
-        
-        /* 본문 영역을 종이 전체 너비로 사용 */
         .main .block-container {
             max-width: 100% !important;
             padding: 0 !important;
             margin: 0 !important;
         }
-
-        /* 표 글자 크기 조정 */
         .stTable { 
             font-size: 10pt !important; 
         }
@@ -121,9 +116,11 @@ else:
             if not available_dates:
                 st.info("시트에 경매 데이터가 없습니다.")
                 filtered_df = pd.DataFrame()
+                date_title = ""
             else:
                 selected_date = st.sidebar.selectbox("📅 1. 경매 날짜 선택", available_dates)
                 filtered_df = df[df['경매일자'] == selected_date]
+                date_title = f"📅 경매일자: {selected_date}"
         else:
             col_d1, col_d2 = st.sidebar.columns(2)
             with col_d1:
@@ -131,6 +128,7 @@ else:
             with col_d2:
                 end_date = st.date_input("종료일", datetime.now().date())
             filtered_df = df[(df['경매일자'] >= start_date) & (df['경매일자'] <= end_date)]
+            date_title = f"🗓️ 조회 기간: {start_date} ~ {end_date}"
 
         if not filtered_df.empty:
             participants = pd.concat([filtered_df['판매자'], filtered_df['구매자']]).dropna().unique()
@@ -148,7 +146,10 @@ else:
                     phone = member_row.iloc[0]['전화번호']
                     address = member_row.iloc[0]['주소']
 
+                # --- [수정된 부분] 상세정보 위에 날짜 추가 ---
+                st.markdown(f"### {date_title}")
                 st.markdown(f"## 👤 {selected_person} 님의 상세 정보")
+                
                 info_col1, info_col2, info_col3 = st.columns([1, 1.2, 2.5])
                 with info_col1: st.markdown(f"**🏷️ 성함**\n{real_name}")
                 with info_col2: st.markdown(f"**📞 연락처**\n{phone}")
