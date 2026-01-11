@@ -27,14 +27,16 @@ st.markdown("""
     .stTable th { text-align: center !important; background-color: #f0f2f6 !important; color: black !important; border: 1px solid #ddd !important; }
     .stTable td { background-color: white !important; color: black !important; border: 1px solid #ddd !important; text-align: center !important; }
     
-    /* 품목 열(보통 2번 혹은 3번)은 왼쪽 정렬 */
+    /* 품목 열 정렬 */
     .stTable td:nth-child(2), .stTable td:nth-child(3) { text-align: left !important; }
     
     [data-testid="stMetricValue"] { font-size: clamp(22px, 5vw, 32px) !important; color: black !important; }
 
+    /* 인쇄 전용 CSS */
     @media print {
-        [data-testid="stSidebar"], .stButton, header, .stDownloadButton { display: none !important; }
+        [data-testid="stSidebar"], .stButton, header, .stDownloadButton, footer, .print-ignore { display: none !important; }
         .main { margin: 0 !important; padding: 0 !important; }
+        .stTable { font-size: 10pt !important; }
     }
     </style>
     """, unsafe_allow_html=True)
@@ -109,7 +111,7 @@ else:
 
             mc1, mc2, mc3 = st.columns(3)
             mc1.metric("📤 판매 정산금", f"{s_n:,.0f}원")
-            mc1.caption(f"판매액:{s_sum:,.0f} / 수수료14%:-{s_f:,.0f}")
+            mc1.caption(f"판매액:{s_total:,.0f} / 수수료14%:-{s_fee:,.0f}") if 's_fee' in locals() else mc1.caption(f"판매액:{s_sum:,.0f} / 수수료14%:-{s_f:,.0f}")
             mc2.metric("📥 구매 청구금", f"{b_n:,.0f}원")
             mc2.caption(f"낙찰가:{b_sum:,.0f} / 수수료5%:+{b_f:,.0f}")
             label = "💵 입금해드릴 돈" if bal > 0 else "📩 입금받을 돈"
@@ -118,7 +120,6 @@ else:
             st.write("---")
             col_l, col_r = st.columns(2)
             
-            # 표 구성 설정
             if view_mode == "일별 조회":
                 s_cols, b_cols = ['품목', '가격', '구매자'], ['품목', '가격', '판매자']
             else:
@@ -140,4 +141,29 @@ else:
                 else: st.write("내역 없음")
 
             st.write("---")
-            st.markdown('<button onclick="window.print()" style="width:100%; background-color:#4CAF50; color:white; padding:15px; border:none; border-radius:5px; cursor:pointer; font-size:18px; font-weight:bold;">📄 이 내역서 인쇄하기 (A4)</button>', unsafe_allow_html=True)
+            
+            # --- [인쇄 해결책: 버튼을 2개로 제공] ---
+            pc1, pc2 = st.columns(2)
+            with pc1:
+                # 1. 자바스크립트를 이용한 직접 인쇄 (버튼 디자인 보강)
+                st.markdown("""
+                    <button onclick="parent.window.print();" style="
+                        width: 100%; background-color: #4CAF50; color: white; padding: 15px; 
+                        border: none; border-radius: 5px; cursor: pointer; font-size: 18px; font-weight: bold;
+                    ">📄 화면 바로 인쇄하기</button>
+                    <p style="font-size: 12px; color: gray; text-align: center;">* 반응이 없으면 아래 '장부 다운로드'를 이용하세요.</p>
+                """, unsafe_allow_html=True)
+            
+            with pc2:
+                # 2. 엑셀로 저장하기 (백업용)
+                csv = filtered_df[((filtered_df['판매자'] == selected_person) | (filtered_df['구매자'] == selected_person))].to_csv(index=False).encode('utf-8-sig')
+                st.download_button(
+                    label="📥 장부 파일로 저장 (Excel)",
+                    data=csv,
+                    file_name=f"{selected_person}_{display_title}.csv",
+                    mime="text/csv",
+                    use_container_width=True
+                )
+
+# 브라우저별 인쇄 팁 안내 (인쇄 버튼 클릭 후 설명)
+st.sidebar.info("💡 **인쇄 팁**\n인쇄 버튼이 작동하지 않으면 브라우저 상단의 '점 세 개' 메뉴에서 '인쇄'를 직접 누르셔도 깔끔하게 나옵니다.")
