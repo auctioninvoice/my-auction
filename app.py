@@ -103,97 +103,103 @@ input_pw = st.sidebar.text_input("비밀번호를 입력하세요", type="passwo
 
 if input_pw == APP_PASSWORD:
     # 비밀번호가 맞을 때만 아래 코드 실행
-df, df_members = load_data()
+    df, df_members = load_data()
 
-if df is not None:
-    st.title("📜 골동품사나이들 경매내역서 조회")
-    st.write("---")
+    if df is not None:
+        st.title("📜 골동품사나이들 경매내역서 조회")
+        st.write("---")
 
-    available_dates = sorted(df['경매일자'].unique(), reverse=True)
-    if not available_dates:
-        st.info("시트에 경매 데이터가 없습니다.")
-    else:
-        selected_date = st.sidebar.selectbox("📅 1. 경매 날짜 선택", available_dates)
-        date_df = df[df['경매일자'] == selected_date]
+        available_dates = sorted(df['경매일자'].unique(), reverse=True)
+        if not available_dates:
+            st.info("시트에 경매 데이터가 없습니다.")
+        else:
+            selected_date = st.sidebar.selectbox("📅 1. 경매 날짜 선택", available_dates)
+            date_df = df[df['경매일자'] == selected_date]
 
-        participants = pd.concat([date_df['판매자'], date_df['구매자']]).dropna().unique()
-        participants = sorted([p for p in participants if str(p).strip() != ""])
-        selected_person = st.sidebar.selectbox(f"👤 2. 고객 선택 ({len(participants)}명)", participants)
+            participants = pd.concat([date_df['판매자'], date_df['구매자']]).dropna().unique()
+            participants = sorted([p for p in participants if str(p).strip() != ""])
+            selected_person = st.sidebar.selectbox(f"👤 2. 고객 선택 ({len(participants)}명)", participants)
 
-        if selected_person:
+            if selected_person:
             # --- 회원정보 매칭 ---
-            member_row = df_members[df_members['닉네임'] == selected_person]
-            is_exempt = False
-            real_name, phone, address = "정보 미등록", "정보 미등록", "정보 미등록"
+                member_row = df_members[df_members['닉네임'] == selected_person]
+                is_exempt = False
+                real_name, phone, address = "정보 미등록", "정보 미등록", "정보 미등록"
 
-            if not member_row.empty:
-                if str(member_row.iloc[0]['수수료면제여부']).strip() == "면제":
-                    is_exempt = True
-                real_name = member_row.iloc[0]['이름']
-                phone = member_row.iloc[0]['전화번호']
-                address = member_row.iloc[0]['주소']
+                if not member_row.empty:
+                    if str(member_row.iloc[0]['수수료면제여부']).strip() == "면제":
+                        is_exempt = True
+                    real_name = member_row.iloc[0]['이름']
+                    phone = member_row.iloc[0]['전화번호']
+                    address = member_row.iloc[0]['주소']
 
-            # --- 고객 정보 섹션 ---
-            st.markdown(f"## 👤 {selected_person} 님의 상세 정보")
-            info_col1, info_col2, info_col3 = st.columns([1, 1.2, 2.5])
-            with info_col1:
-                st.markdown(f"**🏷️ 성함**\n{real_name}")
-            with info_col2:
-                st.markdown(f"**📞 연락처**\n{phone}")
-            with info_col3:
-                st.markdown(f"**🏠 주소**\n{address}")
+                # --- 고객 정보 섹션 ---
+                st.markdown(f"## 👤 {selected_person} 님의 상세 정보")
+                info_col1, info_col2, info_col3 = st.columns([1, 1.2, 2.5])
+                with info_col1:
+                    st.markdown(f"**🏷️ 성함**\n{real_name}")
+                with info_col2:
+                    st.markdown(f"**📞 연락처**\n{phone}")
+                with info_col3:
+                    st.markdown(f"**🏠 주소**\n{address}")
             
-            if is_exempt:
-                st.success("✨ 수수료 면제 대상 회원입니다")
+                if is_exempt:
+                    st.success("✨ 수수료 면제 대상 회원입니다")
             
-            st.write("---")
+                st.write("---")
 
-            # --- 정산 계산 ---
-            sell_data = date_df[date_df['판매자'] == selected_person].copy()
-            buy_data = date_df[date_df['구매자'] == selected_person].copy()
+                # --- 정산 계산 ---
+                sell_data = date_df[date_df['판매자'] == selected_person].copy()
+                buy_data = date_df[date_df['구매자'] == selected_person].copy()
 
-            s_total = int(sell_data['가격'].sum())
-            s_fee = int(s_total * SELL_FEE_RATE)
-            s_net = s_total - s_fee
+                s_total = int(sell_data['가격'].sum())
+                s_fee = int(s_total * SELL_FEE_RATE)
+                s_net = s_total - s_fee
 
-            current_buy_rate = 0 if is_exempt else DEFAULT_BUY_FEE_RATE
-            b_total_raw = int(buy_data['가격'].sum())
-            b_fee = int(b_total_raw * current_buy_rate)
-            b_total_final = b_total_raw + b_fee
-            final_balance = s_net - b_total_final
+                current_buy_rate = 0 if is_exempt else DEFAULT_BUY_FEE_RATE
+                b_total_raw = int(buy_data['가격'].sum())
+                b_fee = int(b_total_raw * current_buy_rate)
+                b_total_final = b_total_raw + b_fee
+                final_balance = s_net - b_total_final
 
-            # --- 요약 카드 ---
-            c1, c2, c3 = st.columns(3)
-            with c1:
-                st.metric("📤 판매 정산금", f"{s_net:,.0f}원")
-                st.caption(f"판매액:{s_total:,.0f} / 수수료14%:-{s_fee:,.0f}")
-            with c2:
-                st.metric("📥 구매 청구금", f"{b_total_final:,.0f}원")
-                st.caption(f"낙찰가:{b_total_raw:,.0f} / 수수료5%:+{b_fee:,.0f}")
-            with c3:
-                label = "💵 입금해드릴 돈" if final_balance > 0 else "📩 입금받을 돈"
-                st.metric(label, f"{abs(final_balance):,.0f}원")
+                # --- 요약 카드 ---
+                c1, c2, c3 = st.columns(3)
+                with c1:
+                    st.metric("📤 판매 정산금", f"{s_net:,.0f}원")
+                    st.caption(f"판매액:{s_total:,.0f} / 수수료14%:-{s_fee:,.0f}")
+                with c2:
+                    st.metric("📥 구매 청구금", f"{b_total_final:,.0f}원")
+                    st.caption(f"낙찰가:{b_total_raw:,.0f} / 수수료5%:+{b_fee:,.0f}")
+                with c3:
+                    label = "💵 입금해드릴 돈" if final_balance > 0 else "📩 입금받을 돈"
+                    st.metric(label, f"{abs(final_balance):,.0f}원")
 
-            st.write("---")
+                st.write("---")
             
-            # --- 상세 내역 (순번 칸 너비 확보) ---
-            col1, col2 = st.columns(2)
-            with col1:
-                st.markdown("### [판매 내역]")
-                if not sell_data.empty:
-                    sell_disp = sell_data[['품목', '가격', '구매자']].reset_index(drop=True)
-                    sell_disp.index += 1
-                    sell_disp['가격'] = sell_disp['가격'].map('{:,.0f}'.format)
-                    st.table(sell_disp)
-                else:
-                    st.write("판매 내역 없음")
+                # --- 상세 내역 (순번 칸 너비 확보) ---
+                col1, col2 = st.columns(2)
+                with col1:
+                    st.markdown("### [판매 내역]")
+                    if not sell_data.empty:
+                        sell_disp = sell_data[['품목', '가격', '구매자']].reset_index(drop=True)
+                        sell_disp.index += 1
+                        sell_disp['가격'] = sell_disp['가격'].map('{:,.0f}'.format)
+                        st.table(sell_disp)
+                    else:
+                        st.write("판매 내역 없음")
 
-            with col2:
-                st.markdown("### [구매 내역]")
-                if not buy_data.empty:
-                    buy_disp = buy_data[['품목', '가격', '판매자']].reset_index(drop=True)
-                    buy_disp.index += 1
-                    buy_disp['가격'] = buy_disp['가격'].map('{:,.0f}'.format)
-                    st.table(buy_disp)
-                else:
-                    st.write("구매 내역 없음")
+                with col2:
+                    st.markdown("### [구매 내역]")
+                    if not buy_data.empty:
+                        buy_disp = buy_data[['품목', '가격', '판매자']].reset_index(drop=True)
+                        buy_disp.index += 1
+                        buy_disp['가격'] = buy_disp['가격'].map('{:,.0f}'.format)
+                        st.table(buy_disp)
+                    else:
+                        st.write("구매 내역 없음")
+else:
+    # 비밀번호 입력 전 대기 화면
+    st.title("🔒 보호된 페이지입니다")
+    st.info("왼쪽 사이드바에 비밀번호를 입력하여 접속해주세요.")
+    st.image("https://cdn.pixabay.com/photo/2013/07/13/11/34/lock-158405_1280.png", width=100)
+
