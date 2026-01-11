@@ -15,30 +15,45 @@ APP_PASSWORD = "4989"
 
 st.set_page_config(page_title="골동품사나이들 관리자", layout="wide")
 
-# --- 스타일 설정 ---
+# --- [라이트모드 강제 고정 스타일] ---
 st.markdown("""
     <style>
-    html, body, [class*="css"] { font-size: 18px !important; }
-    .stTable { width: 100% !important; table-layout: auto !important; }
-    .stTable th { text-align: center !important; background-color: #f0f2f6; }
+    /* 전체 배경 흰색, 글자 검정색 고정 */
+    [data-testid="stAppViewContainer"], [data-testid="stHeader"] {
+        background-color: white !important;
+    }
+    [data-testid="stSidebar"] {
+        background-color: #f8f9fa !important;
+    }
+    /* 모든 텍스트 검정색 강제 */
+    h1, h2, h3, p, span, div, label, .stMarkdown {
+        color: black !important;
+    }
+    
+    /* 표 설정 */
+    .stTable { width: 100% !important; table-layout: auto !important; border-collapse: collapse; }
+    .stTable th { 
+        text-align: center !important; 
+        background-color: #f0f2f6 !important; 
+        color: black !important; 
+    }
+    .stTable td { 
+        background-color: white !important; 
+        color: black !important; 
+        border-bottom: 1px solid #ddd !important;
+    }
+    
+    /* 열별 세부 설정 */
     .stTable td:nth-child(1) { width: 45px !important; text-align: center !important; }
     .stTable td:nth-child(2) { width: auto !important; min-width: 150px !important; text-align: left !important; }
     .stTable td:nth-child(3) { 
         width: 110px !important; text-align: center !important; 
-        white-space: nowrap !important; color: black !important; font-weight: bold;
+        white-space: nowrap !important; font-weight: bold;
         font-size: clamp(14px, 2.8vw, 18px) !important;
     }
     .stTable td:nth-child(4) { width: 90px !important; text-align: center !important; white-space: nowrap; }
-    [data-testid="stMetricValue"] { font-size: clamp(22px, 5vw, 32px) !important; }
     
-    /* 중앙 정렬용 스타일 */
-    .main-login {
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        justify-content: center;
-        padding-top: 50px;
-    }
+    [data-testid="stMetricValue"] { font-size: clamp(22px, 5vw, 32px) !important; color: black !important; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -57,38 +72,27 @@ def load_data():
         st.error(f"데이터 로드 실패: {e}")
         return None, None
 
-# --- 로그인 상태 관리 ---
 if 'logged_in' not in st.session_state:
     st.session_state['logged_in'] = False
 
-# --- 로그인 화면 ---
 if not st.session_state['logged_in']:
     empty1, col_login, empty2 = st.columns([1, 2, 1])
-    
     with col_login:
-        st.write("")
         st.write("")
         st.markdown("<h1 style='text-align: center;'>🔐 보안 접속</h1>", unsafe_allow_html=True)
         st.markdown("<p style='text-align: center;'>비밀번호를 입력해주세요</p>", unsafe_allow_html=True)
-        
         input_pw = st.text_input("", type="password", placeholder="Password", label_visibility="collapsed")
         login_btn = st.button("로그인", use_container_width=True)
-        
         if login_btn:
             if input_pw == APP_PASSWORD:
                 st.session_state['logged_in'] = True
                 st.rerun()
             else:
                 st.error("비밀번호가 틀렸습니다.")
-        
         st.markdown("<div style='text-align: center; font-size: 80px;'>🔓</div>", unsafe_allow_html=True)
-
-# --- 본 화면 (로그인 성공 시) ---
 else:
     df, df_members = load_data()
-
     if df is not None:
-        # 사이드바에 로그아웃 버튼 배치
         if st.sidebar.button("로그아웃"):
             st.session_state['logged_in'] = False
             st.rerun()
@@ -102,7 +106,6 @@ else:
         else:
             selected_date = st.sidebar.selectbox("📅 1. 경매 날짜 선택", available_dates)
             date_df = df[df['경매일자'] == selected_date]
-
             participants = pd.concat([date_df['판매자'], date_df['구매자']]).dropna().unique()
             participants = sorted([p for p in participants if str(p).strip() != ""])
             selected_person = st.sidebar.selectbox(f"👤 2. 고객 선택 ({len(participants)}명)", participants)
@@ -111,7 +114,6 @@ else:
                 member_row = df_members[df_members['닉네임'] == selected_person]
                 is_exempt = False
                 real_name, phone, address = "정보 미등록", "정보 미등록", "정보 미등록"
-
                 if not member_row.empty:
                     if str(member_row.iloc[0]['수수료면제여부']).strip() == "면제":
                         is_exempt = True
@@ -124,29 +126,19 @@ else:
                 with info_col1: st.markdown(f"**🏷️ 성함**\n{real_name}")
                 with info_col2: st.markdown(f"**📞 연락처**\n{phone}")
                 with info_col3: st.markdown(f"**🏠 주소**\n{address}")
-                
                 if is_exempt: st.success("✨ 수수료 면제 대상 회원입니다")
                 st.write("---")
 
                 sell_data = date_df[date_df['판매자'] == selected_person].copy()
                 buy_data = date_df[date_df['구매자'] == selected_person].copy()
-
-                s_total = int(sell_data['가격'].sum())
-                s_fee = int(s_total * SELL_FEE_RATE)
-                s_net = s_total - s_fee
+                s_total = int(sell_data['가격'].sum()); s_fee = int(s_total * SELL_FEE_RATE); s_net = s_total - s_fee
                 current_buy_rate = 0 if is_exempt else DEFAULT_BUY_FEE_RATE
-                b_total_raw = int(buy_data['가격'].sum())
-                b_fee = int(b_total_raw * current_buy_rate)
-                b_total_final = b_total_raw + b_fee
+                b_total_raw = int(buy_data['가격'].sum()); b_fee = int(b_total_raw * current_buy_rate); b_total_final = b_total_raw + b_fee
                 final_balance = s_net - b_total_final
 
                 c1, c2, c3 = st.columns(3)
-                with c1:
-                    st.metric("📤 판매 정산금", f"{s_net:,.0f}원")
-                    st.caption(f"판매액:{s_total:,.0f} / 수수료14%:-{s_fee:,.0f}")
-                with c2:
-                    st.metric("📥 구매 청구금", f"{b_total_final:,.0f}원")
-                    st.caption(f"낙찰가:{b_total_raw:,.0f} / 수수료5%:+{b_fee:,.0f}")
+                with c1: st.metric("📤 판매 정산금", f"{s_net:,.0f}원")
+                with c2: st.metric("📥 구매 청구금", f"{b_total_final:,.0f}원")
                 with c3:
                     label = "💵 입금해드릴 돈" if final_balance > 0 else "📩 입금받을 돈"
                     st.metric(label, f"{abs(final_balance):,.0f}원")
@@ -157,15 +149,13 @@ else:
                     st.markdown("### [판매 내역]")
                     if not sell_data.empty:
                         sell_disp = sell_data[['품목', '가격', '구매자']].reset_index(drop=True)
-                        sell_disp.index += 1
-                        sell_disp['가격'] = sell_disp['가격'].map('{:,.0f}'.format)
+                        sell_disp.index += 1; sell_disp['가격'] = sell_disp['가격'].map('{:,.0f}'.format)
                         st.table(sell_disp)
                     else: st.write("판매 내역 없음")
                 with col2:
                     st.markdown("### [구매 내역]")
                     if not buy_data.empty:
                         buy_disp = buy_data[['품목', '가격', '판매자']].reset_index(drop=True)
-                        buy_disp.index += 1
-                        buy_disp['가격'] = buy_disp['가격'].map('{:,.0f}'.format)
+                        buy_disp.index += 1; buy_disp['가격'] = buy_disp['가격'].map('{:,.0f}'.format)
                         st.table(buy_disp)
                     else: st.write("구매 내역 없음")
