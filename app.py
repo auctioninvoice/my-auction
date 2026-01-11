@@ -6,7 +6,7 @@ import pandas as pd
 # ==========================================
 SHEET_ID = "1hbrT_QQWwCrxsG0Jg81xAJH9_gLzc2ORtmava8tqqUw"
 URL_AUCTION = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/export?format=csv&gid=0"
-URL_MEMBERS = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/export?format=csv&gid=773051258" 
+URL_MEMBERS = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/export?format=csv&gid=1773051258" 
 
 SELL_FEE_RATE = 0.14
 DEFAULT_BUY_FEE_RATE = 0.05
@@ -15,7 +15,7 @@ APP_PASSWORD = "4989"
 
 st.set_page_config(page_title="골동품사나이들 관리자", layout="wide")
 
-# --- [라이트모드 강제 고정 스타일] ---
+# --- [라이트모드 강제 고정 및 스타일] ---
 st.markdown("""
     <style>
     /* 전체 배경 흰색, 글자 검정색 고정 */
@@ -75,6 +75,7 @@ def load_data():
 if 'logged_in' not in st.session_state:
     st.session_state['logged_in'] = False
 
+# 로그인 로직
 if not st.session_state['logged_in']:
     empty1, col_login, empty2 = st.columns([1, 2, 1])
     with col_login:
@@ -90,6 +91,7 @@ if not st.session_state['logged_in']:
             else:
                 st.error("비밀번호가 틀렸습니다.")
         st.markdown("<div style='text-align: center; font-size: 80px;'>🔓</div>", unsafe_allow_html=True)
+
 else:
     df, df_members = load_data()
     if df is not None:
@@ -129,16 +131,28 @@ else:
                 if is_exempt: st.success("✨ 수수료 면제 대상 회원입니다")
                 st.write("---")
 
+                # 정산 계산
                 sell_data = date_df[date_df['판매자'] == selected_person].copy()
                 buy_data = date_df[date_df['구매자'] == selected_person].copy()
-                s_total = int(sell_data['가격'].sum()); s_fee = int(s_total * SELL_FEE_RATE); s_net = s_total - s_fee
+                
+                s_total = int(sell_data['가격'].sum())
+                s_fee = int(s_total * SELL_FEE_RATE)
+                s_net = s_total - s_fee
+                
                 current_buy_rate = 0 if is_exempt else DEFAULT_BUY_FEE_RATE
-                b_total_raw = int(buy_data['가격'].sum()); b_fee = int(b_total_raw * current_buy_rate); b_total_final = b_total_raw + b_fee
+                b_total_raw = int(buy_data['가격'].sum())
+                b_fee = int(b_total_raw * current_buy_rate)
+                b_total_final = b_total_raw + b_fee
                 final_balance = s_net - b_total_final
 
+                # 요약 카드 (수수료 설명 포함)
                 c1, c2, c3 = st.columns(3)
-                with c1: st.metric("📤 판매 정산금", f"{s_net:,.0f}원")
-                with c2: st.metric("📥 구매 청구금", f"{b_total_final:,.0f}원")
+                with c1:
+                    st.metric("📤 판매 정산금", f"{s_net:,.0f}원")
+                    st.caption(f"판매액:{s_total:,.0f} / 수수료14%:-{s_fee:,.0f}")
+                with c2:
+                    st.metric("📥 구매 청구금", f"{b_total_final:,.0f}원")
+                    st.caption(f"낙찰가:{b_total_raw:,.0f} / 수수료5%:+{b_fee:,.0f}")
                 with c3:
                     label = "💵 입금해드릴 돈" if final_balance > 0 else "📩 입금받을 돈"
                     st.metric(label, f"{abs(final_balance):,.0f}원")
