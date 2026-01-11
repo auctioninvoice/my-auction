@@ -6,7 +6,7 @@ import pandas as pd
 # ==========================================
 SHEET_ID = "1hbrT_QQWwCrxsG0Jg81xAJH9_gLzc2ORtmava8tqqUw"
 URL_AUCTION = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/export?format=csv&gid=0"
-URL_MEMBERS = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/export?format=csv&gid=1773051258" 
+URL_MEMBERS = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/export?format=csv&gid=773051258" 
 
 SELL_FEE_RATE = 0.14
 DEFAULT_BUY_FEE_RATE = 0.05
@@ -173,3 +173,4 @@ else:
                         buy_disp.index += 1; buy_disp['가격'] = buy_disp['가격'].map('{:,.0f}'.format)
                         st.table(buy_disp)
                     else: st.write("구매 내역 없음")
+
