@@ -1,5 +1,6 @@
 import streamlit as st
 import pandas as pd
+from datetime import datetime, timedelta
 
 # ==========================================
 # 🛠️ 사장님 전용 설정
@@ -15,22 +16,20 @@ APP_PASSWORD = "4989"
 
 st.set_page_config(page_title="골동품사나이들 관리자", layout="wide")
 
-# --- [라이트모드 강제 고정 및 스타일] ---
+# --- [라이트모드 강제 고정 및 인쇄 최적화 스타일] ---
 st.markdown("""
     <style>
-    /* 전체 배경 흰색, 글자 검정색 고정 */
+    /* 화면 표시 설정 */
     [data-testid="stAppViewContainer"], [data-testid="stHeader"] {
         background-color: white !important;
     }
     [data-testid="stSidebar"] {
         background-color: #f8f9fa !important;
     }
-    /* 모든 텍스트 검정색 강제 */
     h1, h2, h3, p, span, div, label, .stMarkdown {
         color: black !important;
     }
     
-    /* 표 설정 */
     .stTable { width: 100% !important; table-layout: auto !important; border-collapse: collapse; }
     .stTable th { 
         text-align: center !important; 
@@ -43,17 +42,31 @@ st.markdown("""
         border-bottom: 1px solid #ddd !important;
     }
     
-    /* 열별 세부 설정 */
-    .stTable td:nth-child(1) { width: 45px !important; text-align: center !important; }
-    .stTable td:nth-child(2) { width: auto !important; min-width: 150px !important; text-align: left !important; }
-    .stTable td:nth-child(3) { 
-        width: 110px !important; text-align: center !important; 
-        white-space: nowrap !important; font-weight: bold;
-        font-size: clamp(14px, 2.8vw, 18px) !important;
-    }
-    .stTable td:nth-child(4) { width: 90px !important; text-align: center !important; white-space: nowrap; }
-    
     [data-testid="stMetricValue"] { font-size: clamp(22px, 5vw, 32px) !important; color: black !important; }
+
+    /* --- 인쇄 시 적용되는 설정 (핵심) --- */
+    @media print {
+        /* 사이드바, 헤더, 버튼 등 인쇄에서 제외 */
+        [data-testid="stSidebar"], 
+        [data-testid="stHeader"], 
+        .stButton, 
+        button,
+        header { 
+            display: none !important; 
+        }
+        
+        /* 본문 영역을 종이 전체 너비로 사용 */
+        .main .block-container {
+            max-width: 100% !important;
+            padding: 0 !important;
+            margin: 0 !important;
+        }
+
+        /* 표 글자 크기 조정 */
+        .stTable { 
+            font-size: 10pt !important; 
+        }
+    }
     </style>
     """, unsafe_allow_html=True)
 
@@ -75,7 +88,6 @@ def load_data():
 if 'logged_in' not in st.session_state:
     st.session_state['logged_in'] = False
 
-# 로그인 로직
 if not st.session_state['logged_in']:
     empty1, col_login, empty2 = st.columns([1, 2, 1])
     with col_login:
@@ -102,13 +114,26 @@ else:
         st.title("📜 골동품사나이들 경매내역서 조회")
         st.write("---")
 
-        available_dates = sorted(df['경매일자'].unique(), reverse=True)
-        if not available_dates:
-            st.info("시트에 경매 데이터가 없습니다.")
+        view_mode = st.sidebar.radio("🔎 조회 모드 선택", ["일별 조회", "기간별 조회"])
+        
+        if view_mode == "일별 조회":
+            available_dates = sorted(df['경매일자'].unique(), reverse=True)
+            if not available_dates:
+                st.info("시트에 경매 데이터가 없습니다.")
+                filtered_df = pd.DataFrame()
+            else:
+                selected_date = st.sidebar.selectbox("📅 1. 경매 날짜 선택", available_dates)
+                filtered_df = df[df['경매일자'] == selected_date]
         else:
-            selected_date = st.sidebar.selectbox("📅 1. 경매 날짜 선택", available_dates)
-            date_df = df[df['경매일자'] == selected_date]
-            participants = pd.concat([date_df['판매자'], date_df['구매자']]).dropna().unique()
+            col_d1, col_d2 = st.sidebar.columns(2)
+            with col_d1:
+                start_date = st.date_input("시작일", datetime.now().date() - timedelta(days=7))
+            with col_d2:
+                end_date = st.date_input("종료일", datetime.now().date())
+            filtered_df = df[(df['경매일자'] >= start_date) & (df['경매일자'] <= end_date)]
+
+        if not filtered_df.empty:
+            participants = pd.concat([filtered_df['판매자'], filtered_df['구매자']]).dropna().unique()
             participants = sorted([p for p in participants if str(p).strip() != ""])
             selected_person = st.sidebar.selectbox(f"👤 2. 고객 선택 ({len(participants)}명)", participants)
 
@@ -131,9 +156,8 @@ else:
                 if is_exempt: st.success("✨ 수수료 면제 대상 회원입니다")
                 st.write("---")
 
-                # 정산 계산
-                sell_data = date_df[date_df['판매자'] == selected_person].copy()
-                buy_data = date_df[date_df['구매자'] == selected_person].copy()
+                sell_data = filtered_df[filtered_df['판매자'] == selected_person].copy()
+                buy_data = filtered_df[filtered_df['구매자'] == selected_person].copy()
                 
                 s_total = int(sell_data['가격'].sum())
                 s_fee = int(s_total * SELL_FEE_RATE)
@@ -145,7 +169,6 @@ else:
                 b_total_final = b_total_raw + b_fee
                 final_balance = s_net - b_total_final
 
-                # 요약 카드 (수수료 설명 포함)
                 c1, c2, c3 = st.columns(3)
                 with c1:
                     st.metric("📤 판매 정산금", f"{s_net:,.0f}원")
@@ -159,20 +182,25 @@ else:
 
                 st.write("---")
                 col1, col2 = st.columns(2)
+                
+                if view_mode == "일별 조회":
+                    s_cols, b_cols = ['품목', '가격', '구매자'], ['품목', '가격', '판매자']
+                else:
+                    s_cols, b_cols = ['경매일자', '품목', '가격'], ['경매일자', '품목', '가격']
+
                 with col1:
                     st.markdown("### [판매 내역]")
                     if not sell_data.empty:
-                        sell_disp = sell_data[['품목', '가격', '구매자']].reset_index(drop=True)
-                        sell_disp.index += 1; sell_disp['가격'] = sell_disp['가격'].map('{:,.0f}'.format)
+                        sell_disp = sell_data[s_cols].reset_index(drop=True)
+                        sell_disp.index += 1
+                        sell_disp['가격'] = sell_disp['가격'].map('{:,.0f}'.format)
                         st.table(sell_disp)
                     else: st.write("판매 내역 없음")
                 with col2:
                     st.markdown("### [구매 내역]")
                     if not buy_data.empty:
-                        buy_disp = buy_data[['품목', '가격', '판매자']].reset_index(drop=True)
-                        buy_disp.index += 1; buy_disp['가격'] = buy_disp['가격'].map('{:,.0f}'.format)
+                        buy_disp = buy_data[b_cols].reset_index(drop=True)
+                        buy_disp.index += 1
+                        buy_disp['가격'] = buy_disp['가격'].map('{:,.0f}'.format)
                         st.table(buy_disp)
                     else: st.write("구매 내역 없음")
-
-
-
