@@ -7,7 +7,7 @@ from datetime import datetime, timedelta
 # ==========================================
 SHEET_ID = "1hbrT_QQWwCrxsG0Jg81xAJH9_gLzc2ORtmava8tqqUw"
 URL_AUCTION = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/export?format=csv&gid=0"
-URL_MEMBERS = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/export?format=csv&gid=1773051258" 
+URL_MEMBERS = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/export?format=csv&gid=773051258" 
 
 SELL_FEE_RATE = 0.14
 DEFAULT_BUY_FEE_RATE = 0.05
@@ -147,3 +147,4 @@ else:
             # --- [인쇄 버튼] ---
             st.write("---")
             st.markdown('<button onclick="window.print()" style="width:100%; height:50px; background-color:#4CAF50; color:white; border:none; border-radius:5px; cursor:pointer; font-size:18px;">📄 이 내역서 인쇄하기</button>', unsafe_allow_html=True)
+
