@@ -50,7 +50,7 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-@st.cache_data(ttl=10)
+@st.cache_data(ttl=600)
 def load_data():
     try:
         df_a = pd.read_csv(URL_AUCTION)
@@ -507,4 +507,5 @@ else:
                     else: st.write("구매 내역 없음")
             else:
                 st.info("👈 왼쪽에서 날짜와 고객을 선택해 주세요.")
+
 
