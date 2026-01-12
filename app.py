@@ -78,7 +78,7 @@ if 'logged_in' not in st.session_state: st.session_state['logged_in'] = False
 if not st.session_state['logged_in']:
     empty1, col_login, empty2 = st.columns([1, 2, 1])
     with col_login:
-        st.markdown("<h1 style='text-align: center;'>🔐 보안 접속</h1>", unsafe_allow_html=True)
+        st.markdown("<h1 style='text-align: center;'>🔐 골동품사나이들 보안 접속</h1>", unsafe_allow_html=True)
         input_pw = st.text_input("", type="password", placeholder="Password")
         if st.button("로그인", use_container_width=True):
             if input_pw == APP_PASSWORD: st.session_state['logged_in'] = True; st.rerun()
@@ -507,3 +507,4 @@ else:
                     else: st.write("구매 내역 없음")
             else:
                 st.info("👈 왼쪽에서 날짜와 고객을 선택해 주세요.")
+
