@@ -109,7 +109,7 @@ else:
 
         if st.sidebar.button("로그아웃"): st.session_state['logged_in'] = False; st.rerun()
 
-        # --- [사이드바 하단 배송비 이벤트 명단] ---
+        # --- [3. 배송비 이벤트 명단] ---
         st.sidebar.write("---")
         st.sidebar.subheader("💎 배송비 이벤트 명단")
         def get_event_total(nickname):
@@ -131,14 +131,13 @@ else:
                 st.sidebar.markdown(f'<div class="vvip-box"><strong>{v["nick"]}</strong> <span class="benefit-tag">{tag}</span><br>누적: {v["amt"]:,.0f}원</div>', unsafe_allow_html=True)
         else: st.sidebar.write("대상자 없음")
 
-        # --- [메인 화면 출력] ---
+        # --- [4. 메인 화면 출력] ---
 
         if selected_person == "SUMMARY_MODE":
             st.title(date_title)
             if not filtered_df.empty:
-                # --- [수정된 그래프 로직: 오후 2시 ~ 새벽 2시 고정 & 매출/건수 통합] ---
-                st.subheader("📊 시간대별 매출 및 낙찰 건수")
-                
+                # --- [그래프 영역] ---
+                st.subheader("📈 시간대별 매출 및 낙찰 건수 (오후 2시 ~ 새벽 2시)")
                 def parse_auction_time(time_val):
                     try:
                         t_str = str(time_val).strip()
@@ -155,34 +154,26 @@ else:
 
                 chart_df = filtered_df.copy()
                 chart_df['정렬시간'] = chart_df['낙찰시간'].apply(parse_auction_time)
-                
-                # 오후 2시(14) ~ 새벽 2시(26) 고정 범위 생성
                 fixed_hours = list(range(14, 27))
                 time_agg = chart_df.groupby('정렬시간').agg(매출금액=('가격', 'sum'), 낙찰건수=('가격', 'count')).reset_index()
                 full_range = pd.DataFrame({'정렬시간': fixed_hours})
                 time_agg = pd.merge(full_range, time_agg, on='정렬시간', how='left').fillna(0)
 
-                def make_time_label(h):
+                def make_label(h):
                     h = int(h)
                     act_h = h if h < 24 else h - 24
-                    period = "오후" if 12 <= act_h < 24 else "오전"
-                    pretty_h = act_h if act_h <= 12 else act_h - 12
-                    if pretty_h == 0: pretty_h = 12
-                    return f"{period} {pretty_h}시"
+                    p = "오후" if 12 <= act_h < 24 else "오전"
+                    pretty = act_h if act_h <= 12 else act_h - 12
+                    if pretty == 0: pretty = 12
+                    return f"{p} {pretty}시"
                 
-                time_agg['시간대'] = time_agg['정렬시간'].apply(make_time_label)
+                time_agg['시간대'] = time_agg['정렬시간'].apply(make_label)
 
-                # Plotly 콤비네이션 차트
                 fig = make_subplots(specs=[[{"secondary_y": True}]])
-                fig.add_trace(go.Bar(x=time_agg['시간대'], y=time_agg['매출금액'], name="매출액 (원)", marker_color='#3498db', opacity=0.7), secondary_y=False)
-                fig.add_trace(go.Scatter(x=time_agg['시간대'], y=time_agg['낙찰건수'], name="낙찰건수 (건)", mode='lines+markers+text', 
-                               line=dict(color='#e74c3c', width=3), text=time_agg['낙찰건수'].apply(lambda x: f"{int(x)}건" if x>0 else ""),
-                               textposition="top center"), secondary_y=True)
-
-                fig.update_layout(hovermode="x unified", legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-                                  margin=dict(l=20, r=20, t=60, b=20), height=450)
-                fig.update_yaxes(title_text="💰 매출액", secondary_y=False)
-                fig.update_yaxes(title_text="📦 낙찰건수", secondary_y=True, showgrid=False)
+                fig.add_trace(go.Bar(x=time_agg['시간대'], y=time_agg['매출금액'], name="매출액", marker_color='#3498db', opacity=0.7), secondary_y=False)
+                fig.add_trace(go.Scatter(x=time_agg['시간대'], y=time_agg['낙찰건수'], name="낙찰건수", mode='lines+markers+text', 
+                               line=dict(color='#e74c3c', width=3), text=time_agg['낙찰건수'].apply(lambda x: f"{int(x)}건" if x>0 else ""), textposition="top center"), secondary_y=True)
+                fig.update_layout(hovermode="x unified", legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1), height=450)
                 st.plotly_chart(fig, use_container_width=True)
 
                 with st.expander("🕒 시간대별 상세 실적표 보기"):
@@ -192,7 +183,7 @@ else:
                     st.table(display_t.set_index('시간대'))
 
                 st.write("---")
-                # --- [이후 원본 코드 로직 그대로 유지] ---
+                # 총 요약 데이터 계산
                 total_sales = filtered_df['가격'].sum()
                 sell_fees = int(total_sales * SELL_FEE_RATE)
                 all_p = sorted(list(set(filtered_df['판매자'].unique()) | set(filtered_df['구매자'].unique())))
@@ -252,7 +243,6 @@ else:
             else: st.info("데이터가 없습니다.")
 
         elif selected_person == "MONTHLY_SUMMARY":
-            # ... [이하 월별/연간/개인조회 로직 사장님 원본과 동일]
             st.title(f"📅 {selected_month} 월간 실적 요약")
             if not filtered_df.empty:
                 total_sales = filtered_df['가격'].sum()
@@ -263,11 +253,14 @@ else:
                 st.write("---")
                 cl, cr = st.columns(2)
                 with cl:
+                    st.subheader("🏆 이달의 구매 TOP 10")
                     mb = filtered_df.groupby('구매자')['가격'].sum().sort_values(ascending=False).head(10).reset_index()
                     mb.index += 1; mb.columns=['고객명','구매금액']; mb['구매금액']=mb['구매금액'].map('{:,.0f}원'.format); st.table(mb)
                 with cr:
+                    st.subheader("💰 이달의 판매 TOP 10")
                     ms = filtered_df.groupby('판매자')['가격'].sum().sort_values(ascending=False).head(10).reset_index()
                     ms.index += 1; ms.columns=['고객명','판매금액']; ms['판매금액']=ms['판매금액'].map('{:,.0f}원'.format); st.table(ms)
+            else: st.info("데이터가 없습니다.")
 
         elif selected_person == "YEARLY_SUMMARY":
             st.title(f"🏢 {selected_year}년 연간 경영 요약")
@@ -275,7 +268,23 @@ else:
                 total_sales = filtered_df['가격'].sum()
                 st.markdown(f"<div class='summary-box'><h2>{selected_year}년 누적 매출: {total_sales:,.0f}원</h2></div>", unsafe_allow_html=True)
                 filtered_df['월'] = filtered_df['경매일자_dt'].dt.month
-                st.line_chart(filtered_df.groupby('월')['가격'].sum())
+                monthly_chart = filtered_df.groupby('월')['가격'].sum()
+                st.subheader("📊 월별 매출 흐름")
+                st.line_chart(monthly_chart)
+                col_l, col_r = st.columns(2)
+                with col_l:
+                    st.subheader("🥇 연간 구매 왕 TOP 10")
+                    yb = filtered_df.groupby('구매자')['가격'].sum().sort_values(ascending=False).head(10).reset_index()
+                    yb.index += 1; yb.columns=['고객명', '구매금액']; yb['구매금액'] = yb['구매금액'].map('{:,.0f}원'.format); st.table(yb)
+                with col_r:
+                    st.subheader("💰 연간 판매 왕 TOP 10")
+                    ys = filtered_df.groupby('판매자')['가격'].sum().sort_values(ascending=False).head(10).reset_index()
+                    ys.index += 1; ys.columns=['고객명', '판매금액']; ys['판매금액'] = ys['판매금액'].map('{:,.0f}원'.format); st.table(ys)
+                st.write("---")
+                st.subheader("🔝 연간 최고가 낙찰품 TOP 10")
+                yt = filtered_df.sort_values(by='가격', ascending=False).head(10)[['경매일자', '품목', '가격', '구매자', '판매자']].reset_index(drop=True)
+                yt.index += 1; yt['가격'] = yt['가격'].map('{:,.0f}원'.format); st.table(yt)
+            else: st.info("데이터가 없습니다.")
 
         elif selected_person != "선택하세요":
             member_row = df_members[df_members['닉네임'] == selected_person]
@@ -294,12 +303,21 @@ else:
             s_total = int(sell_data['가격'].sum()); s_fee = int(s_total * SELL_FEE_RATE); s_net = s_total - s_fee
             b_total_raw = int(buy_data['가격'].sum()); b_fee = 0 if is_exempt else int(b_total_raw * DEFAULT_BUY_FEE_RATE); b_total_final = b_total_raw + b_fee
             final_balance = s_net - b_total_final
+            
+            # --- [사장님 원본 부연설명 복구] ---
             c1, c2, c3 = st.columns(3)
-            with c1: st.metric("📤 판매 정산금", f"{s_net:,.0f}원")
-            with c2: st.metric("📥 구매 청구금", f"{b_total_final:,.0f}원")
+            with c1:
+                st.metric("📤 판매 정산금", f"{s_net:,.0f}원")
+                st.caption(f"판매합계 {s_total:,.0f}원 - 수수료({int(SELL_FEE_RATE*100)}%) {s_fee:,.0f}원")
+            with c2:
+                st.metric("📥 구매 청구금", f"{b_total_final:,.0f}원")
+                f_txt = "면제" if is_exempt else f"{int(DEFAULT_BUY_FEE_RATE*100)}% ({b_fee:,.0f}원)"
+                st.caption(f"낙찰합계 {b_total_raw:,.0f}원 + 수수료 {f_txt}")
             with c3:
                 label = "💵 입금해드릴 돈" if final_balance > 0 else "📩 입금받을 돈"
                 st.metric(label, f"{abs(final_balance):,.0f}원")
+                st.caption("판매 정산금 - 구매 청구금")
+            
             st.write("---")
             col1, col2 = st.columns(2)
             s_cols, b_cols = (['품목', '가격', '구매자'], ['품목', '가격', '판매자']) if view_mode == "일별 조회" else (['경매일자', '품목', '가격'], ['경매일자', '품목', '가격'])
@@ -307,9 +325,11 @@ else:
                 st.markdown("### [판매 내역]")
                 if not sell_data.empty:
                     disp_s = sell_data[s_cols].reset_index(drop=True); disp_s.index += 1; disp_s['가격'] = disp_s['가격'].map('{:,.0f}'.format); st.table(disp_s)
+                else: st.write("판매 내역 없음")
             with col2:
                 st.markdown("### [구매 내역]")
                 if not buy_data.empty:
                     disp_b = buy_data[b_cols].reset_index(drop=True); disp_b.index += 1; disp_b['가격'] = disp_b['가격'].map('{:,.0f}'.format); st.table(disp_b)
+                else: st.write("구매 내역 없음")
         else:
             st.info("👈 왼쪽에서 날짜와 고객을 선택해 주세요.")
