@@ -175,42 +175,43 @@ else:
             selected_person = "MEMBER_DETAIL_VIEW"
 
         # ---------------------------------------------------------
-        # [기존 모드 로직 유지]
+        # [기존] 일별 요약 및 조회
         # ---------------------------------------------------------
-        elif view_mode == "월별 요약":
-            df['연월'] = df['경매일자_dt'].dt.strftime('%Y-%m')
-            available_months = sorted(df['연월'].unique(), reverse=True)
-            selected_month = st.sidebar.selectbox("📅 월 선택", available_months)
-            filtered_df = df[df['연월'] == selected_month]
-            selected_person = "MONTHLY_SUMMARY"
+        elif view_mode == "일별 요약":
+            selected_date = st.sidebar.selectbox("📅 요약 날짜 선택", available_dates) if available_dates else None
+            filtered_df = df[df['경매일자'] == selected_date] if selected_date else pd.DataFrame()
+            date_title = f"📊 {get_ko_date(selected_date) if selected_date else ''} 판매 요약 보고서"
+            selected_person = "SUMMARY_MODE"
+        elif view_mode == "일별 조회":
+            selected_date = st.sidebar.selectbox("📅 날짜 선택", available_dates) if available_dates else None
+            filtered_df = df[df['경매일자'] == selected_date] if selected_date else pd.DataFrame()
+            date_title = f"📅 경매일자: {get_ko_date(selected_date) if selected_date else ''}"
+        elif view_mode == "기간별 조회": # 기간별
+            c1, c2 = st.sidebar.columns(2)
+            start_date = c1.date_input("시작일", datetime.now().date() - timedelta(days=7))
+            end_date = c2.date_input("종료일", datetime.now().date())
+            filtered_df = df[(df['경매일자'] >= start_date) & (df['경매일자'] <= end_date)]
+            date_title = f"🗓️ 기간: {get_ko_date(start_date)} ~ {get_ko_date(end_date)}"
         elif view_mode == "연간 요약":
             df['연도'] = df['경매일자_dt'].dt.year
             available_years = sorted(df['연도'].unique(), reverse=True)
             selected_year = st.sidebar.selectbox("📅 연도 선택", available_years)
             filtered_df = df[df['연도'] == selected_year]
             selected_person = "YEARLY_SUMMARY"
-        elif view_mode == "일별 요약":
-            selected_date = st.sidebar.selectbox("📅 요약 날짜 선택", available_dates) if available_dates else None
-            filtered_df = df[df['경매일자'] == selected_date] if selected_date else pd.DataFrame()
-            date_title = f"📊 {get_ko_date(selected_date) if selected_date else ''} 판매 요약 보고서"
-            selected_person = "SUMMARY_MODE"
-        else:
-            if view_mode == "일별 조회":
-                selected_date = st.sidebar.selectbox("📅 날짜 선택", available_dates) if available_dates else None
-                filtered_df = df[df['경매일자'] == selected_date] if selected_date else pd.DataFrame()
-                date_title = f"📅 경매일자: {get_ko_date(selected_date) if selected_date else ''}"
-            else:
-                c1, c2 = st.sidebar.columns(2)
-                start_date = c1.date_input("시작일", datetime.now().date() - timedelta(days=7))
-                end_date = c2.date_input("종료일", datetime.now().date())
-                filtered_df = df[(df['경매일자'] >= start_date) & (df['경매일자'] <= end_date)]
-                date_title = f"🗓️ 기간: {get_ko_date(start_date)} ~ {get_ko_date(end_date)}"
+        elif view_mode == "월별 요약":
+            df['연월'] = df['경매일자_dt'].dt.strftime('%Y-%m')
+            available_months = sorted(df['연월'].unique(), reverse=True)
+            selected_month = st.sidebar.selectbox("📅 월 선택", available_months)
+            filtered_df = df[df['연월'] == selected_month]
+            selected_person = "MONTHLY_SUMMARY"
+
+        # 고객 선택 박스 (월별/연간/회원정보 모드 아닐 때만)
+        if view_mode not in ["월별 요약", "연간 요약", "일별 요약", "👤 회원 정보 조회"]:
             participants = sorted([p for p in pd.concat([filtered_df['판매자'], filtered_df['구매자']]).dropna().unique() if str(p).strip() != ""])
             selected_person = st.sidebar.selectbox(f"👤 고객 선택 ({len(participants)}명)", ["선택하세요"] + participants)
 
         if st.sidebar.button("로그아웃"): st.session_state['logged_in'] = False; st.rerun()
 
-        # [사이드바] 배송비 이벤트 명단
         st.sidebar.write("---")
         st.sidebar.subheader("💎 배송비 이벤트 명단")
         def get_event_total(nickname):
@@ -220,7 +221,6 @@ else:
             user_data = df[df['구매자'] == nickname]
             if not pd.isna(last_benefit): user_data = user_data[user_data['경매일자_dt'].dt.date > last_benefit]
             return user_data['가격'].sum()
-        
         all_buyers = df['구매자'].dropna().unique()
         vvip_results = []
         for b in all_buyers:
@@ -233,7 +233,7 @@ else:
                 st.sidebar.markdown(f'<div class="vvip-box"><strong>{v["nick"]}</strong> <span class="benefit-tag">{tag}</span><br>누적: {v["amt"]:,.0f}원</div>', unsafe_allow_html=True)
         else: st.sidebar.write("대상자 없음")
 
-        # --- 메인 화면 출력 ---
+        # --- 메인 화면 로직 ---
         if view_mode != "👤 회원 정보 조회":
             if selected_person == "SUMMARY_MODE":
                 st.title(date_title)
@@ -350,10 +350,10 @@ else:
             elif selected_person == "MONTHLY_SUMMARY":
                 st.title(f"📅 {selected_month} 월간 실적 요약")
                 if not filtered_df.empty:
-                    # --- [수정] 월별 요약 지표 개선 ---
+                    # --- [수정된 부분] 월별 요약 상단 카드 (3칸 + 2칸) ---
                     total_sales = filtered_df['가격'].sum()
                     
-                    # 1. 월 총 예상 수익 계산 (판매수수료 14% + 구매수수료 실비)
+                    # 수수료 수익 계산
                     sell_fees_m = int(total_sales * SELL_FEE_RATE)
                     buy_fees_m = 0
                     m_buyers = filtered_df['구매자'].unique()
@@ -364,38 +364,26 @@ else:
                         if not is_ex: buy_fees_m += int(b_amt * DEFAULT_BUY_FEE_RATE)
                     total_revenue = sell_fees_m + buy_fees_m
 
-                    # 2. 각종 일 평균 계산
+                    # 각종 일평균 계산
                     unique_days = filtered_df['경매일자'].nunique()
-                    if unique_days > 0:
-                        avg_sales = total_sales / unique_days
-                        avg_counts = len(filtered_df) / unique_days
-                        # 일평균 참여 고객 (구매자+판매자 합집합)
-                        daily_cust = filtered_df.groupby('경매일자').apply(lambda x: len(set(x['구매자']) | set(x['판매자'])))
-                        avg_cust = daily_cust.mean()
-                    else:
-                        avg_sales, avg_counts, avg_cust = 0, 0, 0
+                    avg_sales = total_sales / unique_days if unique_days > 0 else 0
+                    avg_counts = len(filtered_df) / unique_days if unique_days > 0 else 0
+                    # 일평균 참여자(구매자+판매자)
+                    daily_cust = filtered_df.groupby('경매일자').apply(lambda x: len(set(x['구매자']) | set(x['판매자'])))
+                    avg_cust = daily_cust.mean() if not daily_cust.empty else 0
 
-                    c1, c2, c3, c4 = st.columns(4)
-                    with c1:
-                        st.markdown(f"""<div class='summary-box'>
-                        <h3>💰 월 총 매출 (예상수익)</h3>
-                        <h2>{total_sales:,.0f}원</h2>
-                        <div style='color:green; font-weight:bold; font-size:0.9em;'>+수익: {total_revenue:,.0f}원</div>
-                        </div>""", unsafe_allow_html=True)
-                    with c2: st.markdown(f"<div class='summary-box'><h3>📈 일 평균 매출</h3><h2>{avg_sales:,.0f}원</h2></div>", unsafe_allow_html=True)
-                    with c3:
-                        st.markdown(f"""<div class='summary-box'>
-                        <h3>📦 월 낙찰 (일평균)</h3>
-                        <h2>{len(filtered_df)}건</h2>
-                        <div style='color:gray; font-size:0.9em;'>({avg_counts:.1f}건)</div>
-                        </div>""", unsafe_allow_html=True)
-                    with c4:
-                        st.markdown(f"""<div class='summary-box'>
-                        <h3>🤝 참여 고객 (일평균)</h3>
-                        <h2>{filtered_df['구매자'].nunique()}명</h2>
-                        <div style='color:gray; font-size:0.9em;'>({avg_cust:.1f}명)</div>
-                        </div>""", unsafe_allow_html=True)
+                    # 1행: 매출 / 수익 / 평균매출 (3칸)
+                    c1, c2, c3 = st.columns(3)
+                    with c1: st.markdown(f"<div class='summary-box'><h3>💰 월 총 매출</h3><h2>{total_sales:,.0f}원</h2></div>", unsafe_allow_html=True)
+                    with c2: st.markdown(f"<div class='summary-box'><h3>📉 월 총 예상수익</h3><h2>{total_revenue:,.0f}원</h2><div style='color:gray; font-size:0.9em;'>(수수료 합계)</div></div>", unsafe_allow_html=True)
+                    with c3: st.markdown(f"<div class='summary-box'><h3>📅 일 평균 매출</h3><h2>{avg_sales:,.0f}원</h2></div>", unsafe_allow_html=True)
                     
+                    # 2행: 낙찰건수 / 참여고객수 (2칸)
+                    c4, c5 = st.columns(2)
+                    with c4: st.markdown(f"<div class='summary-box'><h3>📦 월 낙찰 건수</h3><h2>{len(filtered_df)}건</h2><div style='color:gray; font-size:0.9em;'>(일평균 {avg_counts:.1f}건)</div></div>", unsafe_allow_html=True)
+                    with c5: st.markdown(f"<div class='summary-box'><h3>🤝 참여 고객수</h3><h2>{filtered_df['구매자'].nunique()}명</h2><div style='color:gray; font-size:0.9em;'>(일평균 {avg_cust:.1f}명)</div></div>", unsafe_allow_html=True)
+                    # ----------------------------------------------------
+
                     st.write("---")
                     st.subheader("📈 매출 흐름")
                     daily_sales = filtered_df.groupby('경매일자_dt')['가격'].sum().reset_index()
@@ -435,6 +423,7 @@ else:
                         st.subheader("💰 이달의 판매 TOP 10")
                         ms = filtered_df.groupby('판매자')['가격'].sum().sort_values(ascending=False).head(10).reset_index()
                         ms.index += 1; ms.columns=['고객명','판매금액']; ms['판매금액']=ms['판매금액'].map('{:,.0f}원'.format); st.table(ms)
+                    
                     st.write("---")
                     st.subheader("🔝 이달의 최고가 낙찰품 TOP 10")
                     mt = filtered_df.sort_values(by='가격', ascending=False).head(10)[['경매일자', '품목', '가격', '구매자', '판매자']].reset_index(drop=True)
@@ -446,10 +435,23 @@ else:
                 st.title(f"🏢 {selected_year}년 연간 경영 요약")
                 if not filtered_df.empty:
                     total_sales = filtered_df['가격'].sum()
-                    st.markdown(f"<div class='summary-box'><h2>{selected_year}년 누적 매출: {total_sales:,.0f}원</h2></div>", unsafe_allow_html=True)
-                    filtered_df['월'] = filtered_df['경매일자_dt'].dt.month
+                    unique_days_year = filtered_df['경매일자'].nunique()
+                    avg_daily_sales_year = total_sales / unique_days_year if unique_days_year > 0 else 0
+                    temp_df = filtered_df.copy(); temp_df['월'] = temp_df['경매일자_dt'].dt.month
+                    unique_months = temp_df['월'].nunique()
+                    avg_monthly_sales = total_sales / unique_months if unique_months > 0 else 0
+                    
+                    y1, y2, y3 = st.columns(3)
+                    with y1: st.markdown(f"<div class='summary-box'><h3>💰 {selected_year}년 총 매출</h3><h2>{total_sales:,.0f}원</h2></div>", unsafe_allow_html=True)
+                    with y2: st.markdown(f"<div class='summary-box'><h3>📅 연간 일 평균 매출</h3><h2>{avg_daily_sales_year:,.0f}원</h2></div>", unsafe_allow_html=True)
+                    with y3: st.markdown(f"<div class='summary-box'><h3>📈 월 평균 매출</h3><h2>{avg_monthly_sales:,.0f}원</h2></div>", unsafe_allow_html=True)
+                    
+                    st.write("---")
                     st.subheader("📊 월별 매출 흐름")
-                    st.line_chart(filtered_df.groupby('월')['가격'].sum())
+                    yearly_trend = temp_df.groupby('월')['가격'].sum().reset_index()
+                    fig_yearly = px.line(yearly_trend, x='월', y='가격', markers=True, line_shape='linear', color_discrete_sequence=['#3498db'])
+                    fig_yearly.update_layout(xaxis=dict(tickmode='linear', dtick=1), height=350); st.plotly_chart(fig_yearly, use_container_width=True)
+
                     col_l, col_r = st.columns(2)
                     with col_l:
                         st.subheader("🥇 연간 구매 왕 TOP 10")
@@ -486,8 +488,8 @@ else:
                 final_balance = s_net - b_total_final
                 
                 c1, c2, c3 = st.columns(3)
-                with c1: st.metric("📤 판매 정산금", f"{s_net:,.0f}원"); st.caption(f"판매합계 {s_total:,.0f}원 - 수수료({int(SELL_FEE_RATE*100)}%) {s_fee:,.0f}원")
-                with c2: st.metric("📥 구매 청구금", f"{b_total_final:,.0f}원"); f_txt = "면제" if is_exempt else f"{int(DEFAULT_BUY_FEE_RATE*100)}% ({b_fee:,.0f}원)"; st.caption(f"낙찰합계 {b_total_raw:,.0f}원 + 수수료 {f_txt}")
+                with c1: st.metric("📤 판매 정산금", f"{s_net:,.0f}원"); st.caption(f"판매합계 {s_total:,.0f}원 - 수수료 {s_fee:,.0f}원")
+                with c2: st.metric("📥 구매 청구금", f"{b_total_final:,.0f}원"); f_txt = "면제" if is_exempt else f"{b_fee:,.0f}원"; st.caption(f"낙찰합계 {b_total_raw:,.0f}원 + 수수료 {f_txt}")
                 with c3: label = "💵 입금해드릴 돈" if final_balance > 0 else "📩 입금받을 돈"; st.metric(label, f"{abs(final_balance):,.0f}원"); st.caption("판매 정산금 - 구매 청구금")
                 
                 st.write("---")
