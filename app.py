@@ -44,6 +44,24 @@ st.markdown("""
     
     [data-testid="stMetricValue"] { font-size: clamp(22px, 5vw, 32px) !important; color: black !important; }
 
+    /* VVIP 박스 스타일 */
+    .vvip-box {
+        background-color: #fff3cd;
+        padding: 10px;
+        border-radius: 5px;
+        border: 1px solid #ffeeba;
+        margin-bottom: 8px;
+        font-size: 0.9em;
+    }
+    .benefit-tag {
+        background-color: #d1ecf1;
+        color: #0c5460;
+        padding: 2px 5px;
+        border-radius: 3px;
+        font-size: 0.85em;
+        font-weight: bold;
+    }
+
     /* --- 인쇄 시 적용되는 설정 --- */
     @media print {
         [data-testid="stSidebar"], 
@@ -73,8 +91,14 @@ def load_data():
         df_auction['가격'] = pd.to_numeric(df_auction['가격'].astype(str).str.replace(',', ''), errors='coerce').fillna(0).astype(int)
         df_auction['경매일자'] = pd.to_datetime(df_auction['경매일자']).dt.date
         df_auction = df_auction.drop(columns=['낙찰시간'])
+        
         df_members = pd.read_csv(URL_MEMBERS)
-        df_members.columns = ['닉네임', '이름', '전화번호', '주소', '수수료면제여부', '전미수', '금액']
+        # 마지막혜택일 열이 없는 경우를 대비한 자동 생성 로직
+        if len(df_members.columns) < 8:
+            df_members['마지막혜택일'] = pd.NA
+        df_members.columns = ['닉네임', '이름', '전화번호', '주소', '수수료면제여부', '전미수', '금액', '마지막혜택일']
+        df_members['마지막혜택일'] = pd.to_datetime(df_members['마지막혜택일']).dt.date
+        
         return df_auction, df_members
     except Exception as e:
         st.error(f"데이터 로드 실패: {e}")
@@ -106,6 +130,45 @@ else:
             st.session_state['logged_in'] = False
             st.rerun()
 
+        # --- [추가] 이벤트 누적금액 계산 함수 ---
+        def get_event_total(nickname):
+            row = df_members[df_members['닉네임'] == nickname]
+            if row.empty: return 0
+            last_benefit = row.iloc[0]['마지막혜택일']
+            user_data = df[df['구매자'] == nickname]
+            if not pd.isna(last_benefit):
+                user_data = user_data[user_data['경매일자'] > last_benefit]
+            return user_data['가격'].sum()
+
+        # --- [추가] 좌측 VVIP 배송비 이벤트 명단 ---
+        st.sidebar.write("---")
+        st.sidebar.subheader("🚚 배송비 이벤트 대상")
+        all_buyers = df['구매자'].dropna().unique()
+        vvip_found = False
+        
+        # 전체 구매자 대상 이벤트 금액 계산
+        vvip_results = []
+        for b in all_buyers:
+            amt = get_event_total(b)
+            if amt >= 3000000:
+                vvip_results.append({'nick': b, 'amt': amt})
+        
+        if vvip_results:
+            vvip_results = sorted(vvip_results, key=lambda x: x['amt'], reverse=True)
+            for v in vvip_results:
+                tag = "30% 지원" if v['amt'] < 5000000 else "50% 지원" if v['amt'] < 10000000 else "🔥 전액지원"
+                st.sidebar.markdown(f"""
+                <div class="vvip-box">
+                    <strong>{v['nick']}</strong> <span class="benefit-tag">{tag}</span><br>
+                    누적: {v['amt']:,.0f}원
+                </div>
+                """, unsafe_allow_html=True)
+        else:
+            st.sidebar.write("대상자 없음")
+
+        st.sidebar.write("---")
+
+        # 기존 로직 시작
         st.title("📜 골동품사나이들 경매내역서 조회")
         st.write("---")
 
@@ -150,6 +213,17 @@ else:
                 st.markdown(f"### {date_title}")
                 st.markdown(f"## 👤 {selected_person} 님의 상세 정보")
                 
+                # --- [추가] 이벤트 누적 정보 안내 ---
+                event_amt = get_event_total(selected_person)
+                if event_amt >= 10000000:
+                    st.warning(f"🎊 현재 이벤트 누적액: {event_amt:,.0f}원 (배송비 전액 지원 대상!)")
+                elif event_amt >= 5000000:
+                    st.warning(f"🎊 현재 이벤트 누적액: {event_amt:,.0f}원 (배송비 50% 지원 대상!)")
+                elif event_amt >= 3000000:
+                    st.warning(f"🎊 현재 이벤트 누적액: {event_amt:,.0f}원 (배송비 30% 지원 대상!)")
+                else:
+                    st.info(f"💡 현재 이벤트 누적액: {event_amt:,.0f}원 (300만원 달성 시 배송비 지원)")
+
                 info_col1, info_col2, info_col3 = st.columns([1, 1.2, 2.5])
                 with info_col1: st.markdown(f"**🏷️ 성함**\n{real_name}")
                 with info_col2: st.markdown(f"**📞 연락처**\n{phone}")
