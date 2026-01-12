@@ -16,7 +16,7 @@ APP_PASSWORD = "4989"
 
 st.set_page_config(page_title="골동품사나이들 관리자", layout="wide")
 
-# --- 스타일 설정 (라이트모드/인쇄 최적화) ---
+# --- 스타일 설정 ---
 st.markdown("""
     <style>
     [data-testid="stAppViewContainer"], [data-testid="stHeader"] { background-color: white !important; }
@@ -61,6 +61,7 @@ if 'logged_in' not in st.session_state:
     st.session_state['logged_in'] = False
 
 if not st.session_state['logged_in']:
+    # 로그인 화면 (중략)
     empty1, col_login, empty2 = st.columns([1, 2, 1])
     with col_login:
         st.markdown("<h1 style='text-align: center;'>🔐 보안 접속</h1>", unsafe_allow_html=True)
@@ -87,11 +88,9 @@ else:
             filtered_df = df[(df['경매일자'] >= start_date) & (df['경매일자'] <= end_date)]
             date_title = f"🗓️ 기간: {start_date} ~ {end_date}"
 
-        # 고객 선택
         participants = sorted([p for p in pd.concat([filtered_df['판매자'], filtered_df['구매자']]).dropna().unique() if str(p).strip() != ""])
         selected_person = st.sidebar.selectbox(f"👤 고객 선택 ({len(participants)}명)", ["선택하세요"] + participants)
 
-        # 로그아웃 버튼
         if st.sidebar.button("로그아웃"):
             st.session_state['logged_in'] = False; st.rerun()
 
@@ -119,8 +118,7 @@ else:
             for v in vvip_results:
                 tag = "30% 지원" if v['amt'] < 5000000 else "50% 지원" if v['amt'] < 10000000 else "🔥 전액지원"
                 st.sidebar.markdown(f'<div class="vvip-box"><strong>{v["nick"]}</strong> <span class="benefit-tag">{tag}</span><br>누적: {v["amt"]:,.0f}원</div>', unsafe_allow_html=True)
-        else:
-            st.sidebar.write("대상자 없음")
+        else: st.sidebar.write("대상자 없음")
 
         # --- [3. 메인 화면 출력] ---
         if selected_person != "선택하세요":
@@ -131,7 +129,6 @@ else:
             st.markdown(f"### {date_title}")
             st.markdown(f"## 👤 {selected_person} 님의 상세 정보")
             
-            # 상세 정보 칸 (누적액 삭제됨)
             info_col1, info_col2, info_col3 = st.columns([1, 1.2, 2.5])
             with info_col1: st.markdown(f"**🏷️ 성함**\n{member_row.iloc[0]['이름'] if not member_row.empty else '미등록'}")
             with info_col2: st.markdown(f"**📞 연락처**\n{member_row.iloc[0]['전화번호'] if not member_row.empty else '미등록'}")
@@ -139,22 +136,36 @@ else:
             if is_exempt: st.success("✨ 수수료 면제 대상 회원입니다")
             st.write("---")
 
-            # 정산 및 표 출력 (기존과 동일)
+            # --- [계산 로직] ---
             sell_data = filtered_df[filtered_df['판매자'] == selected_person].copy()
             buy_data = filtered_df[filtered_df['구매자'] == selected_person].copy()
-            s_total = int(sell_data['가격'].sum()); s_fee = int(s_total * SELL_FEE_RATE); s_net = s_total - s_fee
-            b_total_raw = int(buy_data['가격'].sum()); b_fee = 0 if is_exempt else int(b_total_raw * DEFAULT_BUY_FEE_RATE); b_total_final = b_total_raw + b_fee
+            
+            s_total = int(sell_data['가격'].sum())
+            s_fee = int(s_total * SELL_FEE_RATE)
+            s_net = s_total - s_fee
+            
+            current_buy_rate = 0 if is_exempt else DEFAULT_BUY_FEE_RATE
+            b_total_raw = int(buy_data['가격'].sum())
+            b_fee = int(b_total_raw * current_buy_rate)
+            b_total_final = b_total_raw + b_fee
             final_balance = s_net - b_total_final
 
+            # --- [부연 설명 복구된 메트릭] ---
             c1, c2, c3 = st.columns(3)
-            c1.metric("📤 판매 정산금", f"{s_net:,.0f}원")
-            c2.metric("📥 구매 청구금", f"{b_total_final:,.0f}원")
-            label = "💵 입금해드릴 돈" if final_balance > 0 else "📩 입금받을 돈"
-            c3.metric(label, f"{abs(final_balance):,.0f}원")
+            with c1:
+                st.metric("📤 판매 정산금", f"{s_net:,.0f}원")
+                st.caption(f"판매금액:{s_total:,.0f} / 수수료14%:-{s_fee:,.0f}")
+            with c2:
+                st.metric("📥 구매 청구금", f"{b_total_final:,.0f}원")
+                st.caption(f"구매금액:{b_total_raw:,.0f} / 수수료5%:+{b_fee:,.0f}")
+            with c3:
+                label = "💵 입금해드릴 돈" if final_balance > 0 else "📩 입금받을 돈"
+                st.metric(label, f"{abs(final_balance):,.0f}원")
 
             st.write("---")
             col1, col2 = st.columns(2)
             s_cols, b_cols = (['품목', '가격', '구매자'], ['품목', '가격', '판매자']) if view_mode == "일별 조회" else (['경매일자', '품목', '가격'], ['경매일자', '품목', '가격'])
+            
             with col1:
                 st.markdown("### [판매 내역]")
                 if not sell_data.empty:
