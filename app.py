@@ -27,6 +27,8 @@ st.markdown("""
     .stTable td { background-color: white !important; color: black !important; border-bottom: 1px solid #ddd !important; }
     .vvip-box { background-color: #fff3cd; padding: 10px; border-radius: 5px; border: 1px solid #ffeeba; margin-bottom: 8px; border-left: 5px solid #ffc107; }
     .benefit-tag { background-color: #d1ecf1; color: #0c5460; padding: 2px 5px; border-radius: 3px; font-weight: bold; font-size: 0.85em; }
+    /* 요약 박스 스타일 */
+    .summary-box { background-color: #f8f9fa; padding: 20px; border-radius: 10px; border: 1px solid #dee2e6; text-align: center; margin-bottom: 10px; }
     @media print {
         [data-testid="stSidebar"], [data-testid="stHeader"], .stButton, button, header { display: none !important; }
         .main .block-container { max-width: 100% !important; padding: 0 !important; margin: 0 !important; }
@@ -61,7 +63,6 @@ if 'logged_in' not in st.session_state:
     st.session_state['logged_in'] = False
 
 if not st.session_state['logged_in']:
-    # 로그인 화면 (중략)
     empty1, col_login, empty2 = st.columns([1, 2, 1])
     with col_login:
         st.markdown("<h1 style='text-align: center;'>🔐 보안 접속</h1>", unsafe_allow_html=True)
@@ -74,22 +75,30 @@ else:
     if df is not None:
         # --- [1. 사이드바 상단: 조회 설정] ---
         st.sidebar.subheader("🔎 조회 설정")
-        view_mode = st.sidebar.radio("모드 선택", ["일별 조회", "기간별 조회"])
+        # 모드 선택에 '일별 요약' 추가
+        view_mode = st.sidebar.radio("모드 선택", ["일별 조회", "기간별 조회", "일별 요약"])
         
-        if view_mode == "일별 조회":
-            available_dates = sorted(df['경매일자'].unique(), reverse=True)
-            selected_date = st.sidebar.selectbox("📅 날짜 선택", available_dates) if available_dates else None
+        available_dates = sorted(df['경매일자'].unique(), reverse=True)
+        
+        if view_mode == "일별 요약":
+            selected_date = st.sidebar.selectbox("📅 요약 날짜 선택", available_dates) if available_dates else None
             filtered_df = df[df['경매일자'] == selected_date] if selected_date else pd.DataFrame()
-            date_title = f"📅 경매일자: {selected_date}"
+            date_title = f"📊 {selected_date} 판매 요약 보고서"
+            selected_person = "SUMMARY_MODE"
         else:
-            c1, c2 = st.sidebar.columns(2)
-            start_date = c1.date_input("시작일", datetime.now().date() - timedelta(days=7))
-            end_date = c2.date_input("종료일", datetime.now().date())
-            filtered_df = df[(df['경매일자'] >= start_date) & (df['경매일자'] <= end_date)]
-            date_title = f"🗓️ 기간: {start_date} ~ {end_date}"
+            if view_mode == "일별 조회":
+                selected_date = st.sidebar.selectbox("📅 날짜 선택", available_dates) if available_dates else None
+                filtered_df = df[df['경매일자'] == selected_date] if selected_date else pd.DataFrame()
+                date_title = f"📅 경매일자: {selected_date}"
+            else:
+                c1, c2 = st.sidebar.columns(2)
+                start_date = c1.date_input("시작일", datetime.now().date() - timedelta(days=7))
+                end_date = c2.date_input("종료일", datetime.now().date())
+                filtered_df = df[(df['경매일자'] >= start_date) & (df['경매일자'] <= end_date)]
+                date_title = f"🗓️ 기간: {start_date} ~ {end_date}"
 
-        participants = sorted([p for p in pd.concat([filtered_df['판매자'], filtered_df['구매자']]).dropna().unique() if str(p).strip() != ""])
-        selected_person = st.sidebar.selectbox(f"👤 고객 선택 ({len(participants)}명)", ["선택하세요"] + participants)
+            participants = sorted([p for p in pd.concat([filtered_df['판매자'], filtered_df['구매자']]).dropna().unique() if str(p).strip() != ""])
+            selected_person = st.sidebar.selectbox(f"👤 고객 선택 ({len(participants)}명)", ["선택하세요"] + participants)
 
         if st.sidebar.button("로그아웃"):
             st.session_state['logged_in'] = False; st.rerun()
@@ -121,7 +130,61 @@ else:
         else: st.sidebar.write("대상자 없음")
 
         # --- [3. 메인 화면 출력] ---
-        if selected_person != "선택하세요":
+        if selected_person == "SUMMARY_MODE":
+            st.title(date_title)
+            if not filtered_df.empty:
+                # 데이터 집계
+                total_sales = filtered_df['가격'].sum()
+                sell_fees = int(total_sales * SELL_FEE_RATE)
+                
+                # 입출금 리스트 계산
+                all_p = sorted(list(set(filtered_df['판매자'].unique()) | set(filtered_df['구매자'].unique())))
+                pay_in, pay_out, total_buy_fees = [], [], 0
+                
+                for p in all_p:
+                    # 판매 정산
+                    s_amt = int(filtered_df[filtered_df['판매자'] == p]['가격'].sum())
+                    s_net = s_amt - int(s_amt * SELL_FEE_RATE)
+                    # 구매 청구
+                    is_exempt = not df_members[df_members['닉네임'] == p].empty and str(df_members[df_members['닉네임'] == p].iloc[0]['수수료면제여부']).strip() == "면제"
+                    b_raw = int(filtered_df[filtered_df['구매자'] == p]['가격'].sum())
+                    b_f = 0 if is_exempt else int(b_raw * DEFAULT_BUY_FEE_RATE)
+                    total_buy_fees += b_f
+                    # 최종 상계
+                    bal = s_net - (b_raw + b_f)
+                    if bal > 0: pay_out.append((p, bal))
+                    elif bal < 0: pay_in.append((p, abs(bal)))
+
+                # 요약 카드
+                c1, c2, c3 = st.columns(3)
+                with c1: st.markdown(f"<div class='summary-box'><h3>💰 총 매출</h3><h2>{total_sales:,.0f}원</h2></div>", unsafe_allow_html=True)
+                with c2: st.markdown(f"<div class='summary-box'><h3>📉 예상 수익(수수료)</h3><h2>{sell_fees + total_buy_fees:,.0f}원</h2></div>", unsafe_allow_html=True)
+                with c3: st.markdown(f"<div class='summary-box'><h3>📦 낙찰 건수</h3><h2>{len(filtered_df)}건</h2></div>", unsafe_allow_html=True)
+                
+                st.write("---")
+                # 체크리스트
+                col_in, col_out = st.columns(2)
+                with col_in:
+                    st.subheader("📩 입금 받을 돈 (구매자)")
+                    for name, amt in sorted(pay_in, key=lambda x: x[1], reverse=True):
+                        st.checkbox(f"**{name}**: {amt:,.0f}원", key=f"in_{name}")
+                with col_out:
+                    st.subheader("💵 정산 드릴 돈 (판매자)")
+                    for name, amt in sorted(pay_out, key=lambda x: x[1], reverse=True):
+                        st.checkbox(f"**{name}**: {amt:,.0f}원", key=f"out_{name}")
+
+                st.write("---")
+                # 랭킹 분석
+                rank_l, rank_r = st.columns(2)
+                with rank_l:
+                    st.subheader("🏆 오늘자 구매왕")
+                    st.table(filtered_df.groupby('구매자')['가격'].sum().sort_values(ascending=False).head(5).reset_index().rename(columns={'가격':'금액'}))
+                with rank_r:
+                    st.subheader("🔝 최고가 낙찰품")
+                    st.table(filtered_df.sort_values(by='가격', ascending=False).head(5)[['품목', '가격', '구매자']].reset_index(drop=True))
+            else: st.info("데이터가 없습니다.")
+
+        elif selected_person != "선택하세요":
             member_row = df_members[df_members['닉네임'] == selected_person]
             is_exempt = not member_row.empty and str(member_row.iloc[0]['수수료면제여부']).strip() == "면제"
             
