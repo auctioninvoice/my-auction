@@ -142,6 +142,46 @@ else:
         if selected_person == "SUMMARY_MODE":
             st.title(date_title)
             if not filtered_df.empty:
+                # --- [추가] 시간대별 매출 흐름 분석 ---
+                st.subheader("📈 시간대별 매출 및 낙찰 건수 흐름 (오후 2시 시작)")
+                try:
+                    def get_sort_hour(time_str):
+                        try:
+                            h = int(str(time_str).split(':')[0])
+                            # 오후 2시(14시)부터 다음날 새벽까지 흐름 처리 (새벽은 24를 더함)
+                            return h if h >= 14 else h + 24
+                        except: return 99
+                    
+                    chart_df = filtered_df.copy()
+                    chart_df['정렬시간'] = chart_df['낙찰시간'].apply(get_sort_hour)
+                    chart_df = chart_df[chart_df['정렬시간'] != 99] # 잘못된 시간 제외
+                    
+                    time_agg = chart_df.groupby('정렬시간').agg(
+                        매출금액=('가격', 'sum'),
+                        낙찰건수=('가격', 'count')
+                    ).reset_index()
+                    
+                    # 다시 사람이 보기 편한 시간대로 레이블 변경 (예: 25시 -> 새벽 1시)
+                    def format_hour_label(h):
+                        actual_h = h if h < 24 else h - 24
+                        return f"{actual_h:02d}:00"
+                    
+                    time_agg['시간대'] = time_agg['정렬시간'].apply(format_hour_label)
+                    time_agg = time_agg.sort_values('정렬시간')
+                    
+                    # 그래프 출력
+                    c_graph1, c_graph2 = st.columns(2)
+                    with c_graph1:
+                        st.write("💰 시간대별 매출액")
+                        st.line_chart(time_agg.set_index('시간대')['매출금액'])
+                    with c_graph2:
+                        st.write("📦 시간대별 낙찰건수")
+                        st.line_chart(time_agg.set_index('시간대')['낙찰건수'])
+                except:
+                    st.warning("시간 데이터가 부족하거나 형식이 맞지 않아 그래프를 표시할 수 없습니다.")
+                
+                st.write("---")
+
                 total_sales = filtered_df['가격'].sum()
                 sell_fees = int(total_sales * SELL_FEE_RATE)
                 all_p = sorted(list(set(filtered_df['판매자'].unique()) | set(filtered_df['구매자'].unique())))
@@ -248,7 +288,7 @@ else:
                 y_top.index += 1; y_top['가격'] = y_top['가격'].map('{:,.0f}원'.format); st.table(y_top)
             else: st.info("데이터가 없습니다.")
 
-        # [개별 고객 조회 및 기타 코드 동일...]
+        # [개별 고객 조회]
         elif selected_person != "선택하세요":
             member_row = df_members[df_members['닉네임'] == selected_person]
             is_exempt = not member_row.empty and str(member_row.iloc[0]['수수료면제여부']).strip() == "면제"
