@@ -255,7 +255,6 @@ else:
             st.title(f"📅 {selected_month} 월간 실적 요약")
             if not filtered_df.empty:
                 total_sales = filtered_df['가격'].sum()
-                # --- [추가] 일 평균 매출 계산 ---
                 unique_days = filtered_df['경매일자'].nunique()
                 avg_daily_sales = total_sales / unique_days if unique_days > 0 else 0
                 
@@ -324,19 +323,25 @@ else:
             st.title(f"🏢 {selected_year}년 연간 경영 요약")
             if not filtered_df.empty:
                 total_sales = filtered_df['가격'].sum()
-                # --- [추가] 월 평균 매출 계산 ---
+                
+                # --- [수정] 연간 일 평균 매출 계산 ---
+                unique_days_year = filtered_df['경매일자'].nunique()
+                avg_daily_sales_year = total_sales / unique_days_year if unique_days_year > 0 else 0
+                
+                # --- 월 평균 매출 계산 ---
                 temp_df = filtered_df.copy()
                 temp_df['월'] = temp_df['경매일자_dt'].dt.month
                 unique_months = temp_df['월'].nunique()
                 avg_monthly_sales = total_sales / unique_months if unique_months > 0 else 0
                 
-                y1, y2 = st.columns(2)
+                # 요약 박스 3개로 배치
+                y1, y2, y3 = st.columns(3)
                 with y1: st.markdown(f"<div class='summary-box'><h3>💰 {selected_year}년 총 매출</h3><h2>{total_sales:,.0f}원</h2></div>", unsafe_allow_html=True)
-                with y2: st.markdown(f"<div class='summary-box'><h3>📈 월 평균 매출</h3><h2>{avg_monthly_sales:,.0f}원</h2></div>", unsafe_allow_html=True)
+                with y2: st.markdown(f"<div class='summary-box'><h3>📅 연간 일 평균 매출</h3><h2>{avg_daily_sales_year:,.0f}원</h2></div>", unsafe_allow_html=True)
+                with y3: st.markdown(f"<div class='summary-box'><h3>📈 월 평균 매출</h3><h2>{avg_monthly_sales:,.0f}원</h2></div>", unsafe_allow_html=True)
                 
                 st.write("---")
                 st.subheader("📊 월별 매출 흐름")
-                # 월별 차트 시각화 (Plotly로 개선)
                 yearly_trend = temp_df.groupby('월')['가격'].sum().reset_index()
                 fig_yearly = px.line(yearly_trend, x='월', y='가격', markers=True, 
                                      line_shape='linear', color_discrete_sequence=['#3498db'])
