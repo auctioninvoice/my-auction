@@ -16,14 +16,14 @@ APP_PASSWORD = "4989"
 
 st.set_page_config(page_title="골동품사나이들 관리자", layout="wide")
 
-# --- 스타일 설정 (가운데 정렬 추가) ---
+# --- 스타일 설정 ---
 st.markdown("""
     <style>
     [data-testid="stAppViewContainer"], [data-testid="stHeader"] { background-color: white !important; }
     [data-testid="stSidebar"] { background-color: #f8f9fa !important; }
     h1, h2, h3, p, span, div, label, .stMarkdown { color: black !important; }
     
-    /* 표 전체 스타일 및 모든 셀 가운데 정렬 */
+    /* 모든 표의 셀 가운데 정렬 */
     .stTable { width: 100% !important; border-collapse: collapse; }
     .stTable th { text-align: center !important; background-color: #f0f2f6 !important; color: black !important; }
     .stTable td { text-align: center !important; background-color: white !important; color: black !important; border-bottom: 1px solid #ddd !important; }
@@ -53,18 +53,15 @@ def load_data():
         df_m = pd.read_csv(URL_MEMBERS)
         member_cols = ['닉네임', '이름', '전화번호', '주소', '수수료면제여부', '전미수', '금액']
         if len(df_m.columns) >= 8:
-            df_m = df_m.iloc[:, :8]
-            df_m.columns = member_cols + ['마지막혜택일']
+            df_m = df_m.iloc[:, :8]; df_m.columns = member_cols + ['마지막혜택일']
         else:
-            df_m.columns = member_cols
-            df_m['마지막혜택일'] = pd.NA
+            df_m.columns = member_cols; df_m['마지막혜택일'] = pd.NA
         df_m['마지막혜택일'] = pd.to_datetime(df_m['마지막혜택일'], errors='coerce').dt.date
         return df_a, df_m
     except Exception as e:
         st.error(f"데이터 로드 중 오류 발생: {e}"); return None, None
 
-if 'logged_in' not in st.session_state:
-    st.session_state['logged_in'] = False
+if 'logged_in' not in st.session_state: st.session_state['logged_in'] = False
 
 if not st.session_state['logged_in']:
     empty1, col_login, empty2 = st.columns([1, 2, 1])
@@ -114,8 +111,7 @@ else:
             participants = sorted([p for p in pd.concat([filtered_df['판매자'], filtered_df['구매자']]).dropna().unique() if str(p).strip() != ""])
             selected_person = st.sidebar.selectbox(f"👤 고객 선택 ({len(participants)}명)", ["선택하세요"] + participants)
 
-        if st.sidebar.button("로그아웃"):
-            st.session_state['logged_in'] = False; st.rerun()
+        if st.sidebar.button("로그아웃"): st.session_state['logged_in'] = False; st.rerun()
 
         # --- [3. 사이드바 하단 이벤트 명단] ---
         st.sidebar.write("---")
@@ -125,8 +121,7 @@ else:
             if row.empty: return 0
             last_benefit = row.iloc[0]['마지막혜택일']
             user_data = df[df['구매자'] == nickname]
-            if not pd.isna(last_benefit):
-                user_data = user_data[user_data['경매일자_dt'].dt.date > last_benefit]
+            if not pd.isna(last_benefit): user_data = user_data[user_data['경매일자_dt'].dt.date > last_benefit]
             return user_data['가격'].sum()
 
         all_buyers = df['구매자'].dropna().unique()
@@ -157,8 +152,7 @@ else:
                     is_exempt = not df_members[df_members['닉네임'] == p].empty and str(df_members[df_members['닉네임'] == p].iloc[0]['수수료면제여부']).strip() == "면제"
                     b_raw = int(filtered_df[filtered_df['구매자'] == p]['가격'].sum())
                     b_f = 0 if is_exempt else int(b_raw * DEFAULT_BUY_FEE_RATE)
-                    total_buy_fees += b_f
-                    bal = s_net - (b_raw + b_f)
+                    total_buy_fees += b_f; bal = s_net - (b_raw + b_f)
                     if bal > 0: pay_out.append({"고객명": p, "금액": bal})
                     elif bal < 0: pay_in.append({"고객명": p, "금액": abs(bal)})
 
@@ -244,12 +238,17 @@ else:
                     y_buy = filtered_df.groupby('구매자')['가격'].sum().sort_values(ascending=False).head(10).reset_index()
                     y_buy.index += 1; y_buy.columns=['고객명', '구매금액']; y_buy['구매금액'] = y_buy['구매금액'].map('{:,.0f}원'.format); st.table(y_buy)
                 with col_r:
-                    st.subheader("🔝 최고가 낙찰품 TOP 10")
-                    y_top = filtered_df.sort_values(by='가격', ascending=False).head(10)[['경매일자', '품목', '가격', '구매자']].reset_index(drop=True)
-                    y_top.index += 1; y_top['가격'] = y_top['가격'].map('{:,.0f}원'.format); st.table(y_top)
+                    st.subheader("💰 연간 판매 왕 TOP 10") # 판매왕 추가
+                    y_sell = filtered_df.groupby('판매자')['가격'].sum().sort_values(ascending=False).head(10).reset_index()
+                    y_sell.index += 1; y_sell.columns=['고객명', '판매금액']; y_sell['판매금액'] = y_sell['판매금액'].map('{:,.0f}원'.format); st.table(y_sell)
+                
+                st.write("---")
+                st.subheader("🔝 연간 최고가 낙찰품 TOP 10")
+                y_top = filtered_df.sort_values(by='가격', ascending=False).head(10)[['경매일자', '품목', '가격', '구매자', '판매자']].reset_index(drop=True)
+                y_top.index += 1; y_top['가격'] = y_top['가격'].map('{:,.0f}원'.format); st.table(y_top)
             else: st.info("데이터가 없습니다.")
 
-        # [개별 고객 조회]
+        # [개별 고객 조회 및 기타 코드 동일...]
         elif selected_person != "선택하세요":
             member_row = df_members[df_members['닉네임'] == selected_person]
             is_exempt = not member_row.empty and str(member_row.iloc[0]['수수료면제여부']).strip() == "면제"
