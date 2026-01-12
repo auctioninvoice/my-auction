@@ -445,5 +445,4 @@ else:
                         disp_b = buy_data[b_cols].reset_index(drop=True); disp_b.index += 1; disp_b['가격'] = disp_b['가격'].map('{:,.0f}'.format); st.table(disp_b)
                     else: st.write("구매 내역 없음")
             else:
-                st.info("👈 왼쪽에서 날짜와 고객을 선택해 주세요.") 
-
+                st.info("👈 왼쪽에서 날짜와 고객을 선택해 주세요.")
