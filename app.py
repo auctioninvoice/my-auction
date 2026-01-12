@@ -23,7 +23,9 @@ st.set_page_config(page_title="골동품사나이들 관리자", layout="wide")
 def get_ko_date(dt):
     if pd.isna(dt): return ""
     days_ko = ['월', '화', '수', '목', '금', '토', '일']
-    return f"{dt.strftime('%Y-%m-%d')} ({days_ko[dt.weekday()]})"
+    if isinstance(dt, datetime) or hasattr(dt, 'weekday'):
+        return f"{dt.strftime('%Y-%m-%d')} ({days_ko[dt.weekday()]})"
+    return str(dt)
 
 # --- 스타일 설정 ---
 st.markdown("""
@@ -36,7 +38,7 @@ st.markdown("""
     .stTable td { text-align: center !important; background-color: white !important; color: black !important; border-bottom: 1px solid #ddd !important; }
     .vvip-box { background-color: #fff3cd; padding: 10px; border-radius: 5px; border: 1px solid #ffeeba; margin-bottom: 8px; border-left: 5px solid #ffc107; }
     .benefit-tag { background-color: #d1ecf1; color: #0c5460; padding: 2px 5px; border-radius: 3px; font-weight: bold; font-size: 0.85em; }
-    .summary-box { background-color: #f8f9fa; padding: 20px; border-radius: 10px; border: 1px solid #dee2e6; text-align: center; margin-bottom: 10px; }
+    .summary-box { background-color: #f8f9fa; padding: 20px; border-radius: 10px; border: 1px solid #dee2e6; text-align: center; margin-bottom: 10px; min-height: 120px; }
     .total-highlight { background-color: #e9ecef; padding: 10px; border-radius: 5px; text-align: right; font-weight: bold; font-size: 1.1em; color: #212529; margin-bottom: 10px; border-right: 5px solid #6c757d; }
     @media print {
         [data-testid="stSidebar"], [data-testid="stHeader"], .stButton, button, header { display: none !important; }
@@ -253,17 +255,19 @@ else:
             st.title(f"📅 {selected_month} 월간 실적 요약")
             if not filtered_df.empty:
                 total_sales = filtered_df['가격'].sum()
-                c1, c2, c3 = st.columns(3)
-                with c1: st.markdown(f"<div class='summary-box'><h3>💰 월 총 매출</h3><h2>{total_sales:,.0f}원</h2></div>", unsafe_allow_html=True)
-                with c2: st.markdown(f"<div class='summary-box'><h3>📈 월 낙찰 건수</h3><h2>{len(filtered_df)}건</h2></div>", unsafe_allow_html=True)
-                with c3: st.markdown(f"<div class='summary-box'><h3>🤝 참여 고객수</h3><h2>{filtered_df['구매자'].nunique()}명</h2></div>", unsafe_allow_html=True)
+                # --- [추가] 일 평균 매출 계산 ---
+                unique_days = filtered_df['경매일자'].nunique()
+                avg_daily_sales = total_sales / unique_days if unique_days > 0 else 0
                 
-                # --- [수정] 수/토요일만 표시되는 한글 날짜 그래프 ---
+                c1, c2, c3, c4 = st.columns(4)
+                with c1: st.markdown(f"<div class='summary-box'><h3>💰 월 총 매출</h3><h2>{total_sales:,.0f}원</h2></div>", unsafe_allow_html=True)
+                with c2: st.markdown(f"<div class='summary-box'><h3>📈 일 평균 매출</h3><h2>{avg_daily_sales:,.0f}원</h2></div>", unsafe_allow_html=True)
+                with c3: st.markdown(f"<div class='summary-box'><h3>📦 월 낙찰 건수</h3><h2>{len(filtered_df)}건</h2></div>", unsafe_allow_html=True)
+                with c4: st.markdown(f"<div class='summary-box'><h3>🤝 참여 고객수</h3><h2>{filtered_df['구매자'].nunique()}명</h2></div>", unsafe_allow_html=True)
+                
                 st.write("---")
                 st.subheader("📈 수요일/토요일 매출 흐름")
-                # 실제 데이터가 있는 날짜만 추출
                 daily_sales = filtered_df.groupby('경매일자_dt')['가격'].sum().reset_index()
-                # 날짜를 한글 형식(요일 포함)으로 변환
                 daily_sales['한글날짜'] = daily_sales['경매일자_dt'].apply(lambda x: f"{x.strftime('%m/%d')} ({['월','화','수','목','금','토','일'][x.weekday()]})")
                 
                 fig_daily = go.Figure()
@@ -272,7 +276,7 @@ else:
                     mode='lines+markers', line=dict(color='#2ecc71', width=3),
                     hovertemplate="%{x}<br>매출액: %{y:,.0f}원<extra></extra>"
                 ))
-                fig_daily.update_xaxes(type='category') # 수/토만 순차적으로 표시
+                fig_daily.update_xaxes(type='category')
                 fig_daily.update_layout(height=350, margin=dict(l=20, r=20, t=20, b=20))
                 st.plotly_chart(fig_daily, use_container_width=True)
 
@@ -320,10 +324,25 @@ else:
             st.title(f"🏢 {selected_year}년 연간 경영 요약")
             if not filtered_df.empty:
                 total_sales = filtered_df['가격'].sum()
-                st.markdown(f"<div class='summary-box'><h2>{selected_year}년 누적 매출: {total_sales:,.0f}원</h2></div>", unsafe_allow_html=True)
-                filtered_df['월'] = filtered_df['경매일자_dt'].dt.month
+                # --- [추가] 월 평균 매출 계산 ---
+                temp_df = filtered_df.copy()
+                temp_df['월'] = temp_df['경매일자_dt'].dt.month
+                unique_months = temp_df['월'].nunique()
+                avg_monthly_sales = total_sales / unique_months if unique_months > 0 else 0
+                
+                y1, y2 = st.columns(2)
+                with y1: st.markdown(f"<div class='summary-box'><h3>💰 {selected_year}년 총 매출</h3><h2>{total_sales:,.0f}원</h2></div>", unsafe_allow_html=True)
+                with y2: st.markdown(f"<div class='summary-box'><h3>📈 월 평균 매출</h3><h2>{avg_monthly_sales:,.0f}원</h2></div>", unsafe_allow_html=True)
+                
+                st.write("---")
                 st.subheader("📊 월별 매출 흐름")
-                st.line_chart(filtered_df.groupby('월')['가격'].sum())
+                # 월별 차트 시각화 (Plotly로 개선)
+                yearly_trend = temp_df.groupby('월')['가격'].sum().reset_index()
+                fig_yearly = px.line(yearly_trend, x='월', y='가격', markers=True, 
+                                     line_shape='linear', color_discrete_sequence=['#3498db'])
+                fig_yearly.update_layout(xaxis=dict(tickmode='linear', dtick=1), height=350)
+                st.plotly_chart(fig_yearly, use_container_width=True)
+
                 col_l, col_r = st.columns(2)
                 with col_l:
                     st.subheader("🥇 연간 구매 왕 TOP 10")
@@ -373,7 +392,6 @@ else:
             
             st.write("---")
             col1, col2 = st.columns(2)
-            # 표 날짜 한글화
             if '경매일자_dt' in sell_data.columns: sell_data['경매일자'] = sell_data['경매일자_dt'].apply(get_ko_date)
             if '경매일자_dt' in buy_data.columns: buy_data['경매일자'] = buy_data['경매일자_dt'].apply(get_ko_date)
 
