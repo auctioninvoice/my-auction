@@ -16,19 +16,23 @@ APP_PASSWORD = "4989"
 
 st.set_page_config(page_title="골동품사나이들 관리자", layout="wide")
 
-# --- 스타일 설정 ---
+# --- 스타일 설정 (가운데 정렬 추가) ---
 st.markdown("""
     <style>
     [data-testid="stAppViewContainer"], [data-testid="stHeader"] { background-color: white !important; }
     [data-testid="stSidebar"] { background-color: #f8f9fa !important; }
     h1, h2, h3, p, span, div, label, .stMarkdown { color: black !important; }
+    
+    /* 표 전체 스타일 및 모든 셀 가운데 정렬 */
     .stTable { width: 100% !important; border-collapse: collapse; }
     .stTable th { text-align: center !important; background-color: #f0f2f6 !important; color: black !important; }
-    .stTable td { background-color: white !important; color: black !important; border-bottom: 1px solid #ddd !important; }
+    .stTable td { text-align: center !important; background-color: white !important; color: black !important; border-bottom: 1px solid #ddd !important; }
+    
     .vvip-box { background-color: #fff3cd; padding: 10px; border-radius: 5px; border: 1px solid #ffeeba; margin-bottom: 8px; border-left: 5px solid #ffc107; }
     .benefit-tag { background-color: #d1ecf1; color: #0c5460; padding: 2px 5px; border-radius: 3px; font-weight: bold; font-size: 0.85em; }
     .summary-box { background-color: #f8f9fa; padding: 20px; border-radius: 10px; border: 1px solid #dee2e6; text-align: center; margin-bottom: 10px; }
     .total-highlight { background-color: #e9ecef; padding: 10px; border-radius: 5px; text-align: right; font-weight: bold; font-size: 1.1em; color: #212529; margin-bottom: 10px; border-right: 5px solid #6c757d; }
+    
     @media print {
         [data-testid="stSidebar"], [data-testid="stHeader"], .stButton, button, header { display: none !important; }
         .main .block-container { max-width: 100% !important; padding: 0 !important; margin: 0 !important; }
@@ -164,7 +168,6 @@ else:
                 with c3: st.markdown(f"<div class='summary-box'><h3>📦 낙찰 건수</h3><h2>{len(filtered_df)}건</h2></div>", unsafe_allow_html=True)
                 
                 st.write("---")
-                # 명단 섹션 (추가 및 보강)
                 r_col1, r_col2 = st.columns(2)
                 with r_col1:
                     st.subheader("🏆 오늘자 구매 TOP 10")
@@ -233,7 +236,7 @@ else:
                 filtered_df['월'] = filtered_df['경매일자_dt'].dt.month
                 monthly_chart = filtered_df.groupby('월')['가격'].sum().reset_index()
                 st.subheader("📊 월별 매출 흐름 (꺾은선 그래프)")
-                st.line_chart(monthly_chart.set_index('월')) # 꺾은선 그래프로 변경
+                st.line_chart(monthly_chart.set_index('월'))
                 
                 col_l, col_r = st.columns(2)
                 with col_l:
@@ -246,7 +249,7 @@ else:
                     y_top.index += 1; y_top['가격'] = y_top['가격'].map('{:,.0f}원'.format); st.table(y_top)
             else: st.info("데이터가 없습니다.")
 
-        # [기존 개별 고객 조회]
+        # [개별 고객 조회]
         elif selected_person != "선택하세요":
             member_row = df_members[df_members['닉네임'] == selected_person]
             is_exempt = not member_row.empty and str(member_row.iloc[0]['수수료면제여부']).strip() == "면제"
