@@ -212,26 +212,63 @@ else:
 
         if st.sidebar.button("로그아웃"): st.session_state['logged_in'] = False; st.rerun()
 
+        # ---------------------------------------------------------
+        # 💎 배송비 이벤트 명단 (1000만원 리셋 로직 적용 완료)
+        # ---------------------------------------------------------
         st.sidebar.write("---")
         st.sidebar.subheader("💎 배송비 이벤트 명단")
-        def get_event_total(nickname):
+        
+        def get_event_status(nickname):
             row = df_members[df_members['닉네임'] == nickname]
-            if row.empty: return 0
+            if row.empty: return 0, 0
+            
             last_benefit = row.iloc[0]['마지막혜택일']
             user_data = df[df['구매자'] == nickname]
-            if not pd.isna(last_benefit): user_data = user_data[user_data['경매일자_dt'].dt.date > last_benefit]
-            return user_data['가격'].sum()
+            
+            # 마지막 혜택일 이후 데이터만 필터링
+            if not pd.isna(last_benefit): 
+                user_data = user_data[user_data['경매일자_dt'].dt.date > last_benefit]
+            
+            total_sum = user_data['가격'].sum()
+            
+            # 💡 1000만원마다 리셋 로직 (나머지 연산)
+            current_amt = total_sum % 10000000 
+            # 1000만원 달성 횟수 (몫)
+            cycle_count = total_sum // 10000000
+            
+            return current_amt, cycle_count
+        
         all_buyers = df['구매자'].dropna().unique()
         vvip_results = []
+        
         for b in all_buyers:
-            amt = get_event_total(b)
-            if amt >= 3000000: vvip_results.append({'nick': b, 'amt': amt})
+            amt, cycle = get_event_status(b)
+            # 300만원 이상일 때만 표시
+            if amt >= 3000000: 
+                vvip_results.append({'nick': b, 'amt': amt, 'cycle': cycle})
+        
         if vvip_results:
             vvip_results = sorted(vvip_results, key=lambda x: x['amt'], reverse=True)
             for v in vvip_results:
-                tag = "30% 지원" if v['amt'] < 5000000 else "50% 지원" if v['amt'] < 10000000 else "🔥 전액지원"
-                st.sidebar.markdown(f'<div class="vvip-box"><strong>{v["nick"]}</strong> <span class="benefit-tag">{tag}</span><br>누적: {v["amt"]:,.0f}원</div>', unsafe_allow_html=True)
-        else: st.sidebar.write("대상자 없음")
+                # 등급 및 색상 결정
+                if v['amt'] >= 9000000:
+                     tag, border_col = "🔥 전액지원 임박", "#e74c3c"
+                elif v['amt'] >= 5000000:
+                     tag, border_col = "💎 50% 지원", "#3498db"
+                else:
+                     tag, border_col = "🥇 30% 지원", "#f1c40f"
+
+                # 1000만원 달성 뱃지 표시
+                cycle_badge = f"<span style='background-color:#6c757d; color:white; padding:1px 4px; border-radius:3px; font-size:0.7em; margin-left:5px;'>{int(v['cycle'])}회 완주</span>" if v['cycle'] > 0 else ""
+                
+                st.sidebar.markdown(f'''
+                <div class="vvip-box" style="border-left: 5px solid {border_col};">
+                    <div><strong>{v["nick"]}</strong>{cycle_badge}</div>
+                    <div style="margin-top:2px;"><span class="benefit-tag">{tag}</span></div>
+                    <div style="font-size:0.85em; margin-top:4px;">현재 누적: {v["amt"]:,.0f}원</div>
+                </div>''', unsafe_allow_html=True)
+        else: 
+            st.sidebar.write("대상자 없음")
 
         # --- 메인 화면 로직 ---
         if view_mode != "👤 회원 정보 조회":
@@ -507,5 +544,3 @@ else:
                     else: st.write("구매 내역 없음")
             else:
                 st.info("👈 왼쪽에서 날짜와 고객을 선택해 주세요.")
-
-
