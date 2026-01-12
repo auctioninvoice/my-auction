@@ -42,6 +42,7 @@ st.markdown("""
     .total-highlight { background-color: #e9ecef; padding: 10px; border-radius: 5px; text-align: right; font-weight: bold; font-size: 1.1em; color: #212529; margin-bottom: 10px; border-right: 5px solid #6c757d; }
     /* 회원 프로필 카드 스타일 추가 */
     .profile-card { background-color: #ffffff; padding: 20px; border-radius: 15px; border: 1px solid #eee; border-left: 5px solid #3498db; box-shadow: 0 2px 4px rgba(0,0,0,0.05); margin-bottom: 20px; }
+    .bank-box { background-color: #fffde7; padding: 15px; border: 2px dashed #fbc02d; border-radius: 10px; margin: 15px 0; font-size: 1.25em; color: #f57f17 !important; font-weight: bold; text-align: center; }
     @media print {
         [data-testid="stSidebar"], [data-testid="stHeader"], .stButton, button, header { display: none !important; }
         .main .block-container { max-width: 100% !important; padding: 0 !important; margin: 0 !important; }
@@ -60,11 +61,13 @@ def load_data():
         df_a['경매일자'] = df_a['경매일자_dt'].dt.date
         
         df_m = pd.read_csv(URL_MEMBERS)
-        member_cols = ['닉네임', '이름', '전화번호', '주소', '수수료면제여부', '전미수', '금액']
-        if len(df_m.columns) >= 8:
-            df_m = df_m.iloc[:, :8]; df_m.columns = member_cols + ['마지막혜택일']
+        # --- [수정] 계좌번호(I열) 포함하여 로드 ---
+        member_cols = ['닉네임', '이름', '전화번호', '주소', '수수료면제여부', '전미수', '금액', '마지막혜택일', '계좌번호']
+        if len(df_m.columns) >= 9:
+            df_m = df_m.iloc[:, :9]; df_m.columns = member_cols
         else:
-            df_m.columns = member_cols; df_m['마지막혜택일'] = pd.NA
+            df_m.columns = member_cols[:len(df_m.columns)]
+            if '계좌번호' not in df_m.columns: df_m['계좌번호'] = "정보없음"
         df_m['마지막혜택일'] = pd.to_datetime(df_m['마지막혜택일'], errors='coerce').dt.date
         return df_a, df_m
     except Exception as e:
@@ -95,26 +98,33 @@ else:
             
             m_info = df_members[df_members['닉네임'] == search_nick].iloc[0]
             
-            # 개인별 전체 누적 데이터 계산 (날짜 상관없이 전체)
-            personal_buy = df[df['구매자'] == search_nick]
-            personal_sell = df[df['판매자'] == search_nick]
-            total_buy_amt = personal_buy['가격'].sum()
-            total_sell_amt = personal_sell['가격'].sum()
+            # 수수료 포함 계산 로직
+            is_exempt = str(m_info['수수료면제여부']) == '면제'
+            personal_buy = df[df['구매자'] == search_nick].copy()
+            personal_sell = df[df['판매자'] == search_nick].copy()
             
-            # 등급 판별 로직
-            if total_buy_amt >= 10000000: grade, g_color = "🔥 전액지원 대상", "#e74c3c"
-            elif total_buy_amt >= 5000000: grade, g_color = "💎 50% 지원 대상", "#3498db"
-            elif total_buy_amt >= 3000000: grade, g_color = "🥇 30% 지원 대상", "#f1c40f"
+            raw_buy_amt = personal_buy['가격'].sum()
+            buy_fee = 0 if is_exempt else int(raw_buy_amt * DEFAULT_BUY_FEE_RATE)
+            total_buy_with_fee = raw_buy_amt + buy_fee 
+            
+            raw_sell_amt = personal_sell['가격'].sum()
+            sell_fee = int(raw_sell_amt * SELL_FEE_RATE)
+            total_sell_net = raw_sell_amt - sell_fee 
+            
+            if raw_buy_amt >= 10000000: grade, g_color = "🔥 전액지원 대상", "#e74c3c"
+            elif raw_buy_amt >= 5000000: grade, g_color = "💎 50% 지원 대상", "#3498db"
+            elif raw_buy_amt >= 3000000: grade, g_color = "🥇 30% 지원 대상", "#f1c40f"
             else: grade, g_color = "일반 회원", "#95a5a6"
 
             st.markdown(f"""
             <div class="profile-card">
                 <h2 style='margin-top:0;'>{search_nick} <span style='font-size:0.5em; color:white; background-color:{g_color}; padding:3px 10px; border-radius:15px; vertical-align:middle;'>{grade}</span></h2>
+                <div class="bank-box">🏦 정산 계좌: {m_info['계좌번호']}</div>
                 <hr style='margin:10px 0;'>
                 <div style='display: flex; flex-wrap: wrap; gap: 30px;'>
                     <div><strong>🏷️ 성함:</strong> {m_info['이름']}</div>
                     <div><strong>📞 연락처:</strong> {m_info['전화번호']}</div>
-                    <div><strong>✨ 수수료:</strong> {'✅ 면제' if str(m_info['수수료면제여부']) == '면제' else '일반(5%)'}</div>
+                    <div><strong>✨ 수수료:</strong> {'✅ 면제' if is_exempt else '일반(5%)'}</div>
                 </div>
                 <div style='margin-top:10px;'><strong>🏠 주소:</strong> {m_info['주소']}</div>
             </div>
@@ -122,22 +132,22 @@ else:
 
             c1, c2, c3 = st.columns(3)
             with c1: st.markdown(f"<div class='summary-box'><h3>📦 누적 낙찰</h3><h2>{len(personal_buy)}건</h2></div>", unsafe_allow_html=True)
-            with c2: st.markdown(f"<div class='summary-box'><h3>💰 누적 구매액</h3><h2>{total_buy_amt:,.0f}원</h2></div>", unsafe_allow_html=True)
-            with c3: st.markdown(f"<div class='summary-box'><h3>📤 누적 판매액</h3><h2>{total_sell_amt:,.0f}원</h2></div>", unsafe_allow_html=True)
+            with c2: st.markdown(f"<div class='summary-box'><h3>🛍️ 누적 실구매액</h3><h2>{total_buy_with_fee:,.0f}원</h2><p style='font-size:0.8em; color:gray;'>(낙찰가+수수료)</p></div>", unsafe_allow_html=True)
+            with c3: st.markdown(f"<div class='summary-box'><h3>📤 누적 실정산액</h3><h2>{total_sell_net:,.0f}원</h2><p style='font-size:0.8em; color:gray;'>(판매가-수수료)</p></div>", unsafe_allow_html=True)
 
             st.write("---")
             t1, t2 = st.tabs(["🛍️ 전체 구매 내역", "📦 전체 판매 내역"])
             with t1:
                 if not personal_buy.empty:
-                    p_buy_disp = personal_buy[['경매일자', '품목', '가격', '판매자']].sort_values('경매일자', ascending=False)
-                    p_buy_disp['경매일자'] = p_buy_disp['경매일자'].apply(get_ko_date)
-                    st.table(p_buy_disp.reset_index(drop=True))
+                    p_buy_disp = personal_buy[['경매일자', '품목', '가격', '판매자']].sort_values('경매일자', ascending=False).reset_index(drop=True)
+                    p_buy_disp.index += 1; p_buy_disp['경매일자'] = p_buy_disp['경매일자'].apply(get_ko_date)
+                    p_buy_disp['가격'] = p_buy_disp['가격'].map('{:,.0f}'.format); st.table(p_buy_disp)
                 else: st.info("구매 내역이 없습니다.")
             with t2:
                 if not personal_sell.empty:
-                    p_sell_disp = personal_sell[['경매일자', '품목', '가격', '구매자']].sort_values('경매일자', ascending=False)
-                    p_sell_disp['경매일자'] = p_sell_disp['경매일자'].apply(get_ko_date)
-                    st.table(p_sell_disp.reset_index(drop=True))
+                    p_sell_disp = personal_sell[['경매일자', '품목', '가격', '구매자']].sort_values('경매일자', ascending=False).reset_index(drop=True)
+                    p_sell_disp.index += 1; p_sell_disp['경매일자'] = p_sell_disp['경매일자'].apply(get_ko_date)
+                    p_sell_disp['가격'] = p_sell_disp['가격'].map('{:,.0f}'.format); st.table(p_sell_disp)
                 else: st.info("판매 내역이 없습니다.")
             
             selected_person = "MEMBER_DETAIL_VIEW" # 기존 로직 방해 방지용 임시 ID
@@ -198,7 +208,7 @@ else:
                 st.sidebar.markdown(f'<div class="vvip-box"><strong>{v["nick"]}</strong> <span class="benefit-tag">{tag}</span><br>누적: {v["amt"]:,.0f}원</div>', unsafe_allow_html=True)
         else: st.sidebar.write("대상자 없음")
 
-        # --- 출력 화면 분기 (회원 정보 조회 모드가 아닐 때만 기존 화면 출력) ---
+        # --- 출력 화면 분기 ---
         if view_mode != "👤 회원 정보 조회":
             if selected_person == "SUMMARY_MODE":
                 st.title(date_title)
@@ -310,6 +320,7 @@ else:
                             c_amt.markdown(f"{item['금액']:,.0f}원")
                             if not is_c: t_out += item['금액']
                         out_rem.markdown(f"<div class='total-highlight'>남은 미정산 합계: {t_out:,.0f}원</div>", unsafe_allow_html=True)
+                else: st.info("데이터가 없습니다.")
 
             elif selected_person == "MONTHLY_SUMMARY":
                 st.title(f"📅 {selected_month} 월간 실적 요약")
@@ -370,6 +381,13 @@ else:
                         st.subheader("💰 이달의 판매 TOP 10")
                         ms = filtered_df.groupby('판매자')['가격'].sum().sort_values(ascending=False).head(10).reset_index()
                         ms.index += 1; ms.columns=['고객명','판매금액']; ms['판매금액']=ms['판매금액'].map('{:,.0f}원'.format); st.table(ms)
+                    
+                    st.write("---")
+                    st.subheader("🔝 이달의 최고가 낙찰품 TOP 10")
+                    mt = filtered_df.sort_values(by='가격', ascending=False).head(10)[['경매일자', '품목', '가격', '구매자', '판매자']].reset_index(drop=True)
+                    mt['경매일자'] = mt['경매일자'].apply(get_ko_date)
+                    mt.columns = ['경매일자', '품목', '가격', '구매자', '판매자']
+                    mt.index += 1; mt['가격'] = mt['가격'].map('{:,.0f}원'.format); st.table(mt)
                 else: st.info("데이터가 없습니다.")
 
             elif selected_person == "YEARLY_SUMMARY":
@@ -404,6 +422,15 @@ else:
                         st.subheader("💰 연간 판매 왕 TOP 10")
                         ys = filtered_df.groupby('판매자')['가격'].sum().sort_values(ascending=False).head(10).reset_index()
                         ys.index += 1; ys.columns=['고객명', '판매금액']; ys['판매금액'] = ys['판매금액'].map('{:,.0f}원'.format); st.table(ys)
+                    
+                    st.write("---")
+                    # --- [수정] 연간 TOP 50으로 확장 ---
+                    st.subheader("🔝 연간 최고가 낙찰품 TOP 50")
+                    yt = filtered_df.sort_values(by='가격', ascending=False).head(50)[['경매일자', '품목', '가격', '구매자', '판매자']].reset_index(drop=True)
+                    yt['경매일자'] = yt['경매일자'].apply(get_ko_date)
+                    yt.columns = ['경매일자', '품목', '가격', '구매자', '판매자']
+                    yt.index += 1; yt['가격'] = yt['가격'].map('{:,.0f}원'.format); st.table(yt)
+                else: st.info("데이터가 없습니다.")
 
             elif selected_person != "선택하세요":
                 member_row = df_members[df_members['닉네임'] == selected_person]
@@ -424,9 +451,17 @@ else:
                 final_balance = s_net - b_total_final
                 
                 c1, c2, c3 = st.columns(3)
-                with c1: st.metric("📤 판매 정산금", f"{s_net:,.0f}원"); st.caption(f"판매합계 {s_total:,.0f}원 - 수수료 {s_fee:,.0f}원")
-                with c2: st.metric("📥 구매 청구금", f"{b_total_final:,.0f}원"); f_txt = "면제" if is_exempt else f"{b_fee:,.0f}원"; st.caption(f"낙찰합계 {b_total_raw:,.0f}원 + 수수료 {f_txt}")
-                with c3: label = "💵 입금해드릴 돈" if final_balance > 0 else "📩 입금받을 돈"; st.metric(label, f"{abs(final_balance):,.0f}원"); st.caption("판매 정산금 - 구매 청구금")
+                with c1:
+                    st.metric("📤 판매 정산금", f"{s_net:,.0f}원")
+                    st.caption(f"판매합계 {s_total:,.0f}원 - 수수료({int(SELL_FEE_RATE*100)}%) {s_fee:,.0f}원")
+                with c2:
+                    st.metric("📥 구매 청구금", f"{b_total_final:,.0f}원")
+                    f_txt = "면제" if is_exempt else f"{int(DEFAULT_BUY_FEE_RATE*100)}% ({b_fee:,.0f}원)"
+                    st.caption(f"낙찰합계 {b_total_raw:,.0f}원 + 수수료 {f_txt}")
+                with c3:
+                    label = "💵 입금해드릴 돈" if final_balance > 0 else "📩 입금받을 돈"
+                    st.metric(label, f"{abs(final_balance):,.0f}원")
+                    st.caption("판매 정산금 - 구매 청구금")
                 
                 st.write("---")
                 col1, col2 = st.columns(2)
