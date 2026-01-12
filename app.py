@@ -3,6 +3,7 @@ import pandas as pd
 from datetime import datetime, timedelta
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
+import plotly.express as px
 
 # ==========================================
 # 🛠️ 사장님 전용 설정
@@ -164,7 +165,6 @@ else:
                 time_agg['시간대'] = time_agg['정렬시간'].apply(make_label)
 
                 fig = make_subplots(specs=[[{"secondary_y": True}]])
-                # --- [수정] 1.69M -> 1,690,000원 표기 ---
                 fig.add_trace(go.Bar(
                     x=time_agg['시간대'], y=time_agg['매출금액'], name="매출액", 
                     marker_color='#3498db', opacity=0.7,
@@ -177,7 +177,8 @@ else:
                 ), secondary_y=True)
                 fig.update_layout(hovermode="x unified", legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1), height=450)
                 st.plotly_chart(fig, use_container_width=True)
-
+                
+                # --- [이하 생략 - 기존 일별 요약 코드와 동일] ---
                 with st.expander("🕒 시간대별 상세 실적표 보기"):
                     display_t = time_agg[['시간대', '매출금액', '낙찰건수']].copy()
                     display_t['매출금액'] = display_t['매출금액'].map('{:,.0f}원'.format)
@@ -250,6 +251,44 @@ else:
                 with c1: st.markdown(f"<div class='summary-box'><h3>💰 월 총 매출</h3><h2>{total_sales:,.0f}원</h2></div>", unsafe_allow_html=True)
                 with c2: st.markdown(f"<div class='summary-box'><h3>📈 월 낙찰 건수</h3><h2>{len(filtered_df)}건</h2></div>", unsafe_allow_html=True)
                 with c3: st.markdown(f"<div class='summary-box'><h3>🤝 참여 고객수</h3><h2>{filtered_df['구매자'].nunique()}명</h2></div>", unsafe_allow_html=True)
+                
+                # --- [추가] 1. 일자별 매출 흐름 그래프 ---
+                st.write("---")
+                st.subheader("📈 일자별 매출 흐름")
+                daily_sales = filtered_df.groupby('경매일자')['가격'].sum().reset_index()
+                fig_daily = go.Figure()
+                fig_daily.add_trace(go.Scatter(
+                    x=daily_sales['경매일자'], y=daily_sales['가격'], 
+                    mode='lines+markers', line=dict(color='#2ecc71', width=3),
+                    hovertemplate="%{x}<br>매출액: %{y:,.0f}원<extra></extra>"
+                ))
+                fig_daily.update_layout(height=350, margin=dict(l=20, r=20, t=20, b=20))
+                st.plotly_chart(fig_daily, use_container_width=True)
+
+                # --- [추가] 2. 구매/판매 점유율 원형 그래프 ---
+                st.write("---")
+                g_col1, g_col2 = st.columns(2)
+                
+                with g_col1:
+                    st.subheader("🥧 구매자 점유율 (TOP 5)")
+                    b_share = filtered_df.groupby('구매자')['가격'].sum().sort_values(ascending=False).reset_index()
+                    top_b = b_share.head(5)
+                    others_b = pd.DataFrame([{'구매자': '기타', '가격': b_share.iloc[5:]['가격'].sum()}])
+                    b_pie_df = pd.concat([top_b, others_b])
+                    fig_b_pie = px.pie(b_pie_df, values='가격', names='구매자', hole=0.4, color_discrete_sequence=px.colors.sequential.RdBu)
+                    fig_b_pie.update_traces(textinfo='percent+label', hovertemplate="%{label}<br>%{value:,.0f}원")
+                    st.plotly_chart(fig_b_pie, use_container_width=True)
+
+                with g_col2:
+                    st.subheader("🥧 판매자 점유율 (TOP 5)")
+                    s_share = filtered_df.groupby('판매자')['가격'].sum().sort_values(ascending=False).reset_index()
+                    top_s = s_share.head(5)
+                    others_s = pd.DataFrame([{'판매자': '기타', '가격': s_share.iloc[5:]['가격'].sum()}])
+                    s_pie_df = pd.concat([top_s, others_s])
+                    fig_s_pie = px.pie(s_pie_df, values='가격', names='판매자', hole=0.4, color_discrete_sequence=px.colors.sequential.Tealgrn)
+                    fig_s_pie.update_traces(textinfo='percent+label', hovertemplate="%{label}<br>%{value:,.0f}원")
+                    st.plotly_chart(fig_s_pie, use_container_width=True)
+
                 st.write("---")
                 cl, cr = st.columns(2)
                 with cl:
@@ -260,13 +299,14 @@ else:
                     st.subheader("💰 이달의 판매 TOP 10")
                     ms = filtered_df.groupby('판매자')['가격'].sum().sort_values(ascending=False).head(10).reset_index()
                     ms.index += 1; ms.columns=['고객명','판매금액']; ms['판매금액']=ms['판매금액'].map('{:,.0f}원'.format); st.table(ms)
-                # --- [수정] 월별 최고 낙찰 물품 추가 ---
+                
                 st.write("---")
                 st.subheader("🔝 이달의 최고가 낙찰품 TOP 10")
                 mt = filtered_df.sort_values(by='가격', ascending=False).head(10)[['경매일자', '품목', '가격', '구매자', '판매자']].reset_index(drop=True)
                 mt.index += 1; mt['가격'] = mt['가격'].map('{:,.0f}원'.format); st.table(mt)
             else: st.info("데이터가 없습니다.")
 
+        # --- [이후 연간 요약 및 내역서 조회 코드는 기존과 동일] ---
         elif selected_person == "YEARLY_SUMMARY":
             st.title(f"🏢 {selected_year}년 연간 경영 요약")
             if not filtered_df.empty:
@@ -288,7 +328,6 @@ else:
                 st.subheader("🔝 연간 최고가 낙찰품 TOP 10")
                 yt = filtered_df.sort_values(by='가격', ascending=False).head(10)[['경매일자', '품목', '가격', '구매자', '판매자']].reset_index(drop=True)
                 yt.index += 1; yt['가격'] = yt['가격'].map('{:,.0f}원'.format); st.table(yt)
-            else: st.info("데이터가 없습니다.")
 
         elif selected_person != "선택하세요":
             member_row = df_members[df_members['닉네임'] == selected_person]
