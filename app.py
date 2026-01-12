@@ -22,13 +22,10 @@ st.markdown("""
     [data-testid="stAppViewContainer"], [data-testid="stHeader"] { background-color: white !important; }
     [data-testid="stSidebar"] { background-color: #f8f9fa !important; }
     h1, h2, h3, p, span, div, label, .stMarkdown { color: black !important; }
-    .stTable { width: 100% !important; border: 1px solid #ddd !important; }
-    .stTable th { text-align: center !important; background-color: #f0f2f6 !important; color: black !important; font-weight: bold !important; border: 1px solid #ddd !important; }
-    .stTable td { text-align: center !important; background-color: white !important; color: black !important; border: 1px solid #ddd !important; padding: 8px !important; }
+    .total-highlight { background-color: #fce4ec; padding: 10px; border-radius: 5px; text-align: right; font-weight: bold; font-size: 1.2em; color: #d81b60; margin-bottom: 10px; border-right: 5px solid #d81b60; }
+    .summary-box { background-color: #f8f9fa; padding: 20px; border-radius: 10px; border: 1px solid #dee2e6; text-align: center; margin-bottom: 10px; }
     .vvip-box { background-color: #fff3cd; padding: 10px; border-radius: 5px; border: 1px solid #ffeeba; margin-bottom: 8px; border-left: 5px solid #ffc107; }
     .benefit-tag { background-color: #d1ecf1; color: #0c5460; padding: 2px 5px; border-radius: 3px; font-weight: bold; font-size: 0.85em; }
-    .summary-box { background-color: #f8f9fa; padding: 20px; border-radius: 10px; border: 1px solid #dee2e6; text-align: center; margin-bottom: 10px; }
-    .total-highlight { background-color: #e9ecef; padding: 10px; border-radius: 5px; text-align: right; font-weight: bold; font-size: 1.2em; color: #d63384; margin-bottom: 10px; border-right: 5px solid #d63384; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -133,41 +130,54 @@ else:
                 
                 st.write("---")
                 
-                # --- [수정된 입출금 표 (구매왕 표 형식)] ---
+                # --- [수정: 표 내부 체크박스 & 실시간 차감] ---
                 col_in, col_out = st.columns(2)
+                
                 with col_in:
                     st.subheader("📩 입금 받을 돈 (구매자)")
-                    in_done = st.multiselect("✅ 입금 확인된 고객 선택", [i['고객명'] for i in pay_in], key="in_done")
-                    in_display = [i for i in pay_in if i['고객명'] not in in_done]
-                    total_in_remain = sum(i['금액'] for i in in_display)
-                    st.markdown(f"<div class='total-highlight'>남은 미입금 합계: {total_in_remain:,.0f}원</div>", unsafe_allow_html=True)
-                    if in_display:
-                        df_in = pd.DataFrame(in_display).sort_values('고객명')
-                        df_in.index = range(1, len(df_in) + 1)
-                        df_in['금액'] = df_in['금액'].map('{:,.0f}원'.format)
-                        st.table(df_in)
-                    else: st.success("모든 입금이 완료되었습니다!")
+                    df_pay_in = pd.DataFrame(pay_in).sort_values('고객명')
+                    df_pay_in.insert(0, "입금확인", False)
+                    
+                    # 데이터 에디터 출력
+                    edited_in = st.data_editor(
+                        df_pay_in,
+                        column_config={"입금확인": st.column_config.CheckboxColumn(default=False), "금액": st.column_config.NumberColumn(format="%d원")},
+                        disabled=["고객명", "금액"],
+                        hide_index=True,
+                        key="editor_in",
+                        use_container_width=True
+                    )
+                    
+                    # 체크 안 된 금액 합산
+                    in_sum = edited_in[edited_in["입금확인"] == False]["금액"].sum()
+                    st.markdown(f"<div class='total-highlight'>남은 미입금 합계: {in_sum:,.0f}원</div>", unsafe_allow_html=True)
 
                 with col_out:
                     st.subheader("💵 정산 드릴 돈 (판매자)")
-                    out_done = st.multiselect("✅ 정산 완료된 고객 선택", [i['고객명'] for i in pay_out], key="out_done")
-                    out_display = [i for i in pay_out if i['고객명'] not in out_done]
-                    total_out_remain = sum(i['금액'] for i in out_display)
-                    st.markdown(f"<div class='total-highlight'>남은 미정산 합계: {total_out_remain:,.0f}원</div>", unsafe_allow_html=True)
-                    if out_display:
-                        df_out = pd.DataFrame(out_display).sort_values('고객명')
-                        df_out.index = range(1, len(df_out) + 1)
-                        df_out['금액'] = df_out['금액'].map('{:,.0f}원'.format)
-                        st.table(df_out)
-                    else: st.success("모든 정산이 완료되었습니다!")
+                    df_pay_out = pd.DataFrame(pay_out).sort_values('고객명')
+                    df_pay_out.insert(0, "정산완료", False)
+                    
+                    # 데이터 에디터 출력
+                    edited_out = st.data_editor(
+                        df_pay_out,
+                        column_config={"정산완료": st.column_config.CheckboxColumn(default=False), "금액": st.column_config.NumberColumn(format="%d원")},
+                        disabled=["고객명", "금액"],
+                        hide_index=True,
+                        key="editor_out",
+                        use_container_width=True
+                    )
+                    
+                    # 체크 안 된 금액 합산
+                    out_sum = edited_out[edited_out["정산완료"] == False]["금액"].sum()
+                    st.markdown(f"<div class='total-highlight'>남은 미정산 합계: {out_sum:,.0f}원</div>", unsafe_allow_html=True)
 
                 st.write("---")
-                # 랭킹 분석
+                # 랭킹 분석 (st.table 유지)
                 rank_l, rank_r = st.columns(2)
                 with rank_l:
                     st.subheader("🏆 오늘자 구매왕")
                     rb = filtered_df.groupby('구매자')['가격'].sum().sort_values(ascending=False).head(5).reset_index()
-                    rb.index += 1; rb.columns = ['고객명', '구매금액']; rb['구매금액'] = rb['구매금액'].map('{:,.0f}원'.format); st.table(rb)
+                    rb.columns = ['고객명', '구매금액']; rb.index += 1; rb['구매금액'] = rb['구매금액'].map('{:,.0f}원'.format); st.table(rb)
                 with rank_r:
                     st.subheader("🔝 최고가 낙찰품")
                     rt = filtered_df.sort_values(by='가격', ascending=False).head(5)[['품목', '가격', '구매자']].reset_index(drop=True)
@@ -177,7 +187,7 @@ else:
         elif selected_person != "선택하세요":
             member_row = df_members[df_members['닉네임'] == selected_person]
             is_ex = not member_row.empty and str(member_row.iloc[0]['수수료면제여부']).strip() == "면제"
-            st.title("📜 경매내역서 조회")
+            st.title(f"📜 {selected_person} 경매내역서")
             info_col1, info_col2, info_col3 = st.columns([1, 1.2, 2.5])
             with info_col1: st.markdown(f"**🏷️ 성함**\n{member_row.iloc[0]['이름'] if not member_row.empty else '미등록'}")
             with info_col2: st.markdown(f"**📞 연락처**\n{member_row.iloc[0]['전화번호'] if not member_row.empty else '미등록'}")
@@ -196,12 +206,12 @@ else:
             st.write("---")
             col1, col2 = st.columns(2)
             with col1:
-                st.markdown("### [판매 내역]")
+                st.subheader("[판매 내역]")
                 if not sell_data.empty:
                     disp_s = sell_data[['품목', '가격', '구매자']].reset_index(drop=True); disp_s.index += 1
                     disp_s['가격'] = disp_s['가격'].map('{:,.0f}원'.format); st.table(disp_s)
             with col2:
-                st.markdown("### [구매 내역]")
+                st.subheader("[구매 내역]")
                 if not buy_data.empty:
                     disp_b = buy_data[['품목', '가격', '판매자']].reset_index(drop=True); disp_b.index += 1
                     disp_b['가격'] = disp_b['가격'].map('{:,.0f}원'.format); st.table(disp_b)
