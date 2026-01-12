@@ -74,6 +74,7 @@ else:
         view_mode = st.sidebar.radio("모드 선택", ["일별 조회", "기간별 조회", "일별 요약", "월별 요약", "연간 요약"])
         available_dates = sorted(df['경매일자'].unique(), reverse=True)
         
+        # 필터링 로직
         if view_mode == "월별 요약":
             df['연월'] = df['경매일자_dt'].dt.strftime('%Y-%m')
             available_months = sorted(df['연월'].unique(), reverse=True)
@@ -107,7 +108,7 @@ else:
 
         if st.sidebar.button("로그아웃"): st.session_state['logged_in'] = False; st.rerun()
 
-        # --- [사이드바 이벤트 명단 로직 생략(기존과 동일)] ---
+        # --- [3. 사이드바 하단 배송비 이벤트 명단] ---
         st.sidebar.write("---")
         st.sidebar.subheader("💎 배송비 이벤트 명단")
         def get_event_total(nickname):
@@ -129,14 +130,15 @@ else:
                 st.sidebar.markdown(f'<div class="vvip-box"><strong>{v["nick"]}</strong> <span class="benefit-tag">{tag}</span><br>누적: {v["amt"]:,.0f}원</div>', unsafe_allow_html=True)
         else: st.sidebar.write("대상자 없음")
 
-        # --- [메인 화면 출력] ---
+        # --- [4. 메인 화면 출력] ---
 
         if selected_person == "SUMMARY_MODE":
             st.title(date_title)
             if not filtered_df.empty:
-                # --- [수정] 한글 오전/오후 시간 파싱 및 그래프 로직 ---
-                st.subheader("📈 시간대별 매출 및 낙찰 건수 흐름 (오후 2시 시작)")
-                def parse_korean_time_to_sort(time_val):
+                # --- [강화된 시간대별 분석 로직] ---
+                st.subheader("📈 시간대별 매출 및 낙찰 건수 (오후 2시 ~ 다음날 오전)")
+                
+                def parse_auction_time(time_val):
                     try:
                         t_str = str(time_val).strip()
                         if not t_str or t_str == 'nan': return None
@@ -145,32 +147,47 @@ else:
                             try:
                                 dt_obj = datetime.strptime(t_str, fmt)
                                 h = dt_obj.hour
+                                # 오후 2시(14시) 기점으로 연속성 부여 (새벽은 24 이상으로 처리)
                                 return h if h >= 14 else h + 24
                             except: continue
                         return None
                     except: return None
 
                 chart_df = filtered_df.copy()
-                chart_df['정렬시간'] = chart_df['낙찰시간'].apply(parse_korean_time_to_sort)
+                chart_df['정렬시간'] = chart_df['낙찰시간'].apply(parse_auction_time)
                 valid_chart_df = chart_df.dropna(subset=['정렬시간'])
                 
                 if not valid_chart_df.empty:
                     time_agg = valid_chart_df.groupby('정렬시간').agg(매출금액=('가격', 'sum'), 낙찰건수=('가격', 'count')).reset_index()
-                    all_h = range(14, int(time_agg['정렬시간'].max()) + 1)
-                    time_agg = pd.merge(pd.DataFrame({'정렬시간': list(all_h)}), time_agg, on='정렬시간', how='left').fillna(0)
-                    def fmt_label(h):
-                        act_h = int(h) if h < 24 else int(h) - 24
-                        p = "오후" if 12 <= act_h < 24 else "오전"
-                        disp = act_h if act_h <= 12 else act_h - 12
-                        if disp == 0: disp = 12
-                        return f"{p} {disp}시"
-                    time_agg['시간대'] = time_agg['정렬시간'].apply(fmt_label)
+                    # 오후 2시(14)부터 마지막 데이터 시간 또는 오전 10시(34) 중 더 늦은 쪽까지 범위 생성
+                    last_h = int(max(time_agg['정렬시간'].max(), 34))
+                    full_range = pd.DataFrame({'정렬시간': list(range(14, last_h + 1))})
+                    time_agg = pd.merge(full_range, time_agg, on='정렬시간', how='left').fillna(0)
+                    
+                    def make_time_label(h):
+                        h = int(h)
+                        act_h = h if h < 24 else h - 24
+                        period = "오전" if 0 <= act_h < 12 else "오후"
+                        pretty_h = act_h if act_h <= 12 else act_h - 12
+                        if pretty_h == 0: pretty_h = 12
+                        return f"{period} {pretty_h}시"
+                    
+                    time_agg['시간대'] = time_agg['정렬시간'].apply(make_time_label)
+                    
                     g1, g2 = st.columns(2)
-                    with g1: st.write("💰 시간대별 매출"); st.line_chart(time_agg.set_index('시간대')['매출금액'])
-                    with g2: st.write("📦 시간대별 건수"); st.line_chart(time_agg.set_index('시간대')['낙찰건수'])
-                else: st.warning("시간 데이터를 인식할 수 없습니다.")
-                
+                    with g1: st.write("💰 시간대별 매출액"); st.line_chart(time_agg.set_index('시간대')['매출금액'])
+                    with g2: st.write("📦 시간대별 낙찰건수"); st.line_chart(time_agg.set_index('시간대')['낙찰건수'])
+                    
+                    with st.expander("🕒 시간대별 상세 실적표 보기"):
+                        display_t = time_agg[['시간대', '매출금액', '낙찰건수']].copy()
+                        display_t['매출금액'] = display_t['매출금액'].map('{:,.0f}원'.format)
+                        display_t['낙찰건수'] = display_t['낙찰건수'].map('{:,.0f}건'.format)
+                        st.table(display_t.set_index('시간대'))
+                else:
+                    st.warning("낙찰시간 형식이 올바르지 않아 통계를 낼 수 없습니다.")
+
                 st.write("---")
+                # 총 요약 데이터 계산
                 total_sales = filtered_df['가격'].sum()
                 sell_fees = int(total_sales * SELL_FEE_RATE)
                 all_p = sorted(list(set(filtered_df['판매자'].unique()) | set(filtered_df['구매자'].unique())))
@@ -187,46 +204,46 @@ else:
 
                 c1, c2, c3 = st.columns(3)
                 with c1: st.markdown(f"<div class='summary-box'><h3>💰 총 매출</h3><h2>{total_sales:,.0f}원</h2></div>", unsafe_allow_html=True)
-                with c2: st.markdown(f"<div class='summary-box'><h3>📉 예상 수익</h3><h2>{sell_fees + total_buy_fees:,.0f}원</h2></div>", unsafe_allow_html=True)
+                with c2: st.markdown(f"<div class='summary-box'><h3>📉 예상 수익(수수료)</h3><h2>{sell_fees + total_buy_fees:,.0f}원</h2></div>", unsafe_allow_html=True)
                 with c3: st.markdown(f"<div class='summary-box'><h3>📦 낙찰 건수</h3><h2>{len(filtered_df)}건</h2></div>", unsafe_allow_html=True)
                 
                 st.write("---")
-                r1, r2 = st.columns(2)
-                with r1:
-                    st.subheader("🏆 오늘 구매 TOP 10")
+                r_col1, r_col2 = st.columns(2)
+                with r_col1:
+                    st.subheader("🏆 오늘자 구매 TOP 10")
                     rb = filtered_df.groupby('구매자')['가격'].sum().sort_values(ascending=False).head(10).reset_index()
-                    rb.index += 1; rb.columns=['고객명','구매금액']; rb['구매금액']=rb['구매금액'].map('{:,.0f}원'.format); st.table(rb)
-                with r2:
-                    st.subheader("💰 오늘 판매 TOP 10")
+                    rb.index += 1; rb.columns = ['고객명', '구매금액']; rb['구매금액'] = rb['구매금액'].map('{:,.0f}원'.format); st.table(rb)
+                with r_col2:
+                    st.subheader("💰 오늘자 판매 TOP 10")
                     rs = filtered_df.groupby('판매자')['가격'].sum().sort_values(ascending=False).head(10).reset_index()
-                    rs.index += 1; rs.columns=['고객명','판매금액']; rs['판매금액']=rs['판매금액'].map('{:,.0f}원'.format); st.table(rs)
-                
-                st.subheader("🔝 오늘 최고가 낙찰품 TOP 10")
+                    rs.index += 1; rs.columns = ['고객명', '판매금액']; rs['판매금액'] = rs['판매금액'].map('{:,.0f}원'.format); st.table(rs)
+
+                st.subheader("🔝 오늘자 최고가 낙찰품 TOP 10")
                 rt = filtered_df.sort_values(by='가격', ascending=False).head(10)[['품목', '가격', '구매자', '판매자']].reset_index(drop=True)
                 rt.index += 1; rt['가격'] = rt['가격'].map('{:,.0f}원'.format); st.table(rt)
 
                 st.write("---")
-                ci, co = st.columns(2)
-                with ci:
-                    st.subheader("📩 입금 받을 돈")
-                    rip = st.empty(); tri = 0
+                col_in, col_out = st.columns(2)
+                with col_in:
+                    st.subheader("📩 입금 받을 돈 (구매자)")
+                    in_rem = st.empty(); t_in = 0
                     for item in sorted(pay_in, key=lambda x: x['금액'], reverse=True):
-                        chk, nm, am = st.columns([1, 4, 4])
-                        is_c = chk.checkbox("", key=f"in_{selected_date}_{item['고객명']}")
-                        nm.markdown(f"**{item['고객명']}**")
-                        am.markdown(f"{item['금액']:,.0f}원")
-                        if not is_c: tri += item['금액']
-                    rip.markdown(f"<div class='total-highlight'>남은 미입금: {tri:,.0f}원</div>", unsafe_allow_html=True)
-                with co:
-                    st.subheader("💵 정산 드릴 돈")
-                    rop = st.empty(); tro = 0
+                        c_chk, c_name, c_amt = st.columns([1, 4, 4])
+                        is_c = c_chk.checkbox("", key=f"in_{selected_date}_{item['고객명']}")
+                        c_name.markdown(f"**{item['고객명']}**")
+                        c_amt.markdown(f"{item['금액']:,.0f}원")
+                        if not is_c: t_in += item['금액']
+                    in_rem.markdown(f"<div class='total-highlight'>남은 미입금 합계: {t_in:,.0f}원</div>", unsafe_allow_html=True)
+                with col_out:
+                    st.subheader("💵 정산 드릴 돈 (판매자)")
+                    out_rem = st.empty(); t_out = 0
                     for item in sorted(pay_out, key=lambda x: x['금액'], reverse=True):
-                        chk, nm, am = st.columns([1, 4, 4])
-                        is_c = chk.checkbox("", key=f"out_{selected_date}_{item['고객명']}")
-                        nm.markdown(f"**{item['고객명']}**")
-                        am.markdown(f"{item['금액']:,.0f}원")
-                        if not is_c: tro += item['금액']
-                    rop.markdown(f"<div class='total-highlight'>남은 미정산: {tro:,.0f}원</div>", unsafe_allow_html=True)
+                        c_chk, c_name, c_amt = st.columns([1, 4, 4])
+                        is_c = c_chk.checkbox("", key=f"out_{selected_date}_{item['고객명']}")
+                        c_name.markdown(f"**{item['고객명']}**")
+                        c_amt.markdown(f"{item['금액']:,.0f}원")
+                        if not is_c: t_out += item['금액']
+                    out_rem.markdown(f"<div class='total-highlight'>남은 미정산 합계: {t_out:,.0f}원</div>", unsafe_allow_html=True)
             else: st.info("데이터가 없습니다.")
 
         elif selected_person == "MONTHLY_SUMMARY":
@@ -234,9 +251,9 @@ else:
             if not filtered_df.empty:
                 total_sales = filtered_df['가격'].sum()
                 c1, c2, c3 = st.columns(3)
-                with c1: st.markdown(f"<div class='summary-box'><h3>💰 월 매출</h3><h2>{total_sales:,.0f}원</h2></div>", unsafe_allow_html=True)
-                with c2: st.markdown(f"<div class='summary-box'><h3>📈 낙찰 건수</h3><h2>{len(filtered_df)}건</h2></div>", unsafe_allow_html=True)
-                with c3: st.markdown(f"<div class='summary-box'><h3>🤝 고객수</h3><h2>{filtered_df['구매자'].nunique()}명</h2></div>", unsafe_allow_html=True)
+                with c1: st.markdown(f"<div class='summary-box'><h3>💰 월 총 매출</h3><h2>{total_sales:,.0f}원</h2></div>", unsafe_allow_html=True)
+                with c2: st.markdown(f"<div class='summary-box'><h3>📈 월 낙찰 건수</h3><h2>{len(filtered_df)}건</h2></div>", unsafe_allow_html=True)
+                with c3: st.markdown(f"<div class='summary-box'><h3>🤝 참여 고객수</h3><h2>{filtered_df['구매자'].nunique()}명</h2></div>", unsafe_allow_html=True)
                 st.write("---")
                 cl, cr = st.columns(2)
                 with cl:
@@ -247,6 +264,7 @@ else:
                     st.subheader("💰 이달의 판매 TOP 10")
                     ms = filtered_df.groupby('판매자')['가격'].sum().sort_values(ascending=False).head(10).reset_index()
                     ms.index += 1; ms.columns=['고객명','판매금액']; ms['판매금액']=ms['판매금액'].map('{:,.0f}원'.format); st.table(ms)
+            else: st.info("데이터가 없습니다.")
 
         elif selected_person == "YEARLY_SUMMARY":
             st.title(f"🏢 {selected_year}년 연간 경영 요약")
@@ -254,27 +272,29 @@ else:
                 total_sales = filtered_df['가격'].sum()
                 st.markdown(f"<div class='summary-box'><h2>{selected_year}년 누적 매출: {total_sales:,.0f}원</h2></div>", unsafe_allow_html=True)
                 filtered_df['월'] = filtered_df['경매일자_dt'].dt.month
-                mc = filtered_df.groupby('월')['가격'].sum().reset_index()
+                monthly_chart = filtered_df.groupby('월')['가격'].sum().reset_index()
                 st.subheader("📊 월별 매출 흐름")
-                st.line_chart(mc.set_index('월'))
+                st.line_chart(monthly_chart.set_index('월'))
                 col_l, col_r = st.columns(2)
                 with col_l:
                     st.subheader("🥇 연간 구매 왕 TOP 10")
                     yb = filtered_df.groupby('구매자')['가격'].sum().sort_values(ascending=False).head(10).reset_index()
-                    yb.index+=1; yb.columns=['고객명','구매금액']; yb['구매금액']=yb['구매금액'].map('{:,.0f}원'.format); st.table(yb)
+                    yb.index += 1; yb.columns=['고객명', '구매금액']; yb['구매금액'] = yb['구매금액'].map('{:,.0f}원'.format); st.table(yb)
                 with col_r:
                     st.subheader("💰 연간 판매 왕 TOP 10")
                     ys = filtered_df.groupby('판매자')['가격'].sum().sort_values(ascending=False).head(10).reset_index()
-                    ys.index+=1; ys.columns=['고객명','판매금액']; ys['판매금액']=ys['판매금액'].map('{:,.0f}원'.format); st.table(ys)
+                    ys.index += 1; ys.columns=['고객명', '판매금액']; ys['판매금액'] = ys['판매금액'].map('{:,.0f}원'.format); st.table(ys)
                 st.write("---")
                 st.subheader("🔝 연간 최고가 낙찰품 TOP 10")
                 yt = filtered_df.sort_values(by='가격', ascending=False).head(10)[['경매일자', '품목', '가격', '구매자', '판매자']].reset_index(drop=True)
-                yt.index+=1; yt['가격']=yt['가격'].map('{:,.0f}원'.format); st.table(yt)
+                yt.index += 1; yt['가격'] = yt['가격'].map('{:,.0f}원'.format); st.table(yt)
+            else: st.info("데이터가 없습니다.")
 
         elif selected_person != "선택하세요":
             member_row = df_members[df_members['닉네임'] == selected_person]
             is_exempt = not member_row.empty and str(member_row.iloc[0]['수수료면제여부']).strip() == "면제"
             st.title("📜 경매내역서 조회")
+            st.markdown(f"### {date_title}")
             st.markdown(f"## 👤 {selected_person} 님의 상세 정보")
             i1, i2, i3 = st.columns([1, 1.2, 2.5])
             i1.markdown(f"**🏷️ 성함**\n{member_row.iloc[0]['이름'] if not member_row.empty else '미등록'}")
@@ -282,22 +302,29 @@ else:
             i3.markdown(f"**🏠 주소**\n{member_row.iloc[0]['주소'] if not member_row.empty else '미등록'}")
             if is_exempt: st.success("✨ 수수료 면제 대상 회원입니다")
             st.write("---")
-            sd = filtered_df[filtered_df['판매자'] == selected_person].copy()
-            bd = filtered_df[filtered_df['구매자'] == selected_person].copy()
-            st_raw = int(sd['가격'].sum()); sf = int(st_raw * SELL_FEE_RATE); sn = st_raw - sf
-            bt_raw = int(bd['가격'].sum()); bf = 0 if is_exempt else int(bt_raw * DEFAULT_BUY_FEE_RATE); bt_f = bt_raw + bf
-            bal = sn - bt_f
+            sell_data = filtered_df[filtered_df['판매자'] == selected_person].copy()
+            buy_data = filtered_df[filtered_df['구매자'] == selected_person].copy()
+            s_total = int(sell_data['가격'].sum()); s_fee = int(s_total * SELL_FEE_RATE); s_net = s_total - s_fee
+            b_total_raw = int(buy_data['가격'].sum()); b_fee = 0 if is_exempt else int(b_total_raw * DEFAULT_BUY_FEE_RATE); b_total_final = b_total_raw + b_fee
+            final_balance = s_net - b_total_final
             c1, c2, c3 = st.columns(3)
-            with c1: st.metric("📤 판매 정산금", f"{sn:,.0f}원")
-            with c2: st.metric("📥 구매 청구금", f"{bt_f:,.0f}원")
-            with c3: st.metric("💵 최종 정산액" if bal > 0 else "📩 최종 입금액", f"{abs(bal):,.0f}원")
+            with c1: st.metric("📤 판매 정산금", f"{s_net:,.0f}원")
+            with c2: st.metric("📥 구매 청구금", f"{b_total_final:,.0f}원")
+            with c3:
+                label = "💵 입금해드릴 돈" if final_balance > 0 else "📩 입금받을 돈"
+                st.metric(label, f"{abs(final_balance):,.0f}원")
             st.write("---")
-            l, r = st.columns(2)
-            scs, bcs = (['품목','가격','구매자'],['품목','가격','판매자']) if view_mode=="일별 조회" else (['경매일자','품목','가격'],['경매일자','품목','가격'])
-            with l:
+            col1, col2 = st.columns(2)
+            s_cols, b_cols = (['품목', '가격', '구매자'], ['품목', '가격', '판매자']) if view_mode == "일별 조회" else (['경매일자', '품목', '가격'], ['경매일자', '품목', '가격'])
+            with col1:
                 st.markdown("### [판매 내역]")
-                if not sd.empty: dps=sd[scs].reset_index(drop=True); dps.index+=1; dps['가격']=dps['가격'].map('{:,.0f}'.format); st.table(dps)
-            with r:
+                if not sell_data.empty:
+                    disp_s = sell_data[s_cols].reset_index(drop=True); disp_s.index += 1; disp_s['가격'] = disp_s['가격'].map('{:,.0f}'.format); st.table(disp_s)
+                else: st.write("판매 내역 없음")
+            with col2:
                 st.markdown("### [구매 내역]")
-                if not bd.empty: dpb=bd[bcs].reset_index(drop=True); dpb.index+=1; dpb['가격']=dpb['가격'].map('{:,.0f}'.format); st.table(dpb)
-        else: st.info("👈 왼쪽에서 날짜와 고객을 선택해 주세요.")
+                if not buy_data.empty:
+                    disp_b = buy_data[b_cols].reset_index(drop=True); disp_b.index += 1; disp_b['가격'] = disp_b['가격'].map('{:,.0f}'.format); st.table(disp_b)
+                else: st.write("구매 내역 없음")
+        else:
+            st.info("👈 왼쪽에서 날짜와 고객을 선택해 주세요.")
