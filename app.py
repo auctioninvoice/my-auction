@@ -45,6 +45,7 @@ def load_data():
         df_a['경매일자'] = pd.to_datetime(df_a['경매일자'], errors='coerce')
         df_a = df_a.dropna(subset=['경매일자']) 
         df_a['경매일자'] = df_a['경매일자'].dt.date
+        
         df_m = pd.read_csv(URL_MEMBERS)
         member_cols = ['닉네임', '이름', '전화번호', '주소', '수수료면제여부', '전미수', '금액']
         if len(df_m.columns) >= 8:
@@ -99,7 +100,7 @@ else:
         if st.sidebar.button("로그아웃"):
             st.session_state['logged_in'] = False; st.rerun()
 
-        # --- [2. 사이드바 하단: 이벤트 명단 복구] ---
+        # --- [2. 사이드바 하단: 이벤트 명단] ---
         st.sidebar.write("---")
         st.sidebar.subheader("💎 배송비 이벤트 명단")
         def get_event_total(nickname):
@@ -186,14 +187,12 @@ else:
             else: st.info("데이터가 없습니다.")
 
         elif selected_person != "선택하세요":
-            # --- [개별 조회 상세 정보 복구] ---
             member_row = df_members[df_members['닉네임'] == selected_person]
             is_exempt = not member_row.empty and str(member_row.iloc[0]['수수료면제여부']).strip() == "면제"
             st.title("📜 경매내역서 조회")
             st.markdown(f"### {date_title}")
             st.markdown(f"## 👤 {selected_person} 님의 상세 정보")
             
-            # 주소, 연락처 칸 복구
             info_col1, info_col2, info_col3 = st.columns([1, 1.2, 2.5])
             with info_col1: st.markdown(f"**🏷️ 성함**\n{member_row.iloc[0]['이름'] if not member_row.empty else '미등록'}")
             with info_col2: st.markdown(f"**📞 연락처**\n{member_row.iloc[0]['전화번호'] if not member_row.empty else '미등록'}")
@@ -229,6 +228,7 @@ else:
                     disp_b = buy_data[b_cols].reset_index(drop=True); disp_b.index += 1
                     disp_b['가격'] = disp_b['가격'].map('{:,.0f}'.format); st.table(disp_b)
                 else: st.write("구매 내역 없음")
-            
-
-
+        
+        # --- [마지막 안내 문구 추가] ---
+        else:
+            st.info("👈 왼쪽에서 날짜와 고객을 선택해 주세요.")
