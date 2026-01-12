@@ -16,16 +16,19 @@ APP_PASSWORD = "4989"
 
 st.set_page_config(page_title="골동품사나이들 관리자", layout="wide")
 
-# --- 스타일 설정 ---
+# --- 스타일 설정 (표 테두리 및 버튼 디자인) ---
 st.markdown("""
     <style>
-    [data-testid="stAppViewContainer"], [data-testid="stHeader"] { background-color: white !important; }
-    [data-testid="stSidebar"] { background-color: #f8f9fa !important; }
-    h1, h2, h3, p, span, div, label, .stMarkdown { color: black !important; }
-    .total-highlight { background-color: #fce4ec; padding: 10px; border-radius: 5px; text-align: right; font-weight: bold; font-size: 1.2em; color: #d81b60; margin-bottom: 10px; border-right: 5px solid #d81b60; }
+    [data-testid="stAppViewContainer"] { background-color: white !important; }
+    .stButton button { width: 100%; padding: 2px !important; height: 30px !important; font-size: 12px !important; }
+    .total-highlight { background-color: #f8f9fa; padding: 15px; border-radius: 10px; text-align: right; font-weight: bold; font-size: 1.3em; color: #d32f2f; margin-bottom: 10px; border: 1px solid #dee2e6; border-right: 8px solid #d32f2f; }
     .summary-box { background-color: #f8f9fa; padding: 20px; border-radius: 10px; border: 1px solid #dee2e6; text-align: center; margin-bottom: 10px; }
     .vvip-box { background-color: #fff3cd; padding: 10px; border-radius: 5px; border: 1px solid #ffeeba; margin-bottom: 8px; border-left: 5px solid #ffc107; }
     .benefit-tag { background-color: #d1ecf1; color: #0c5460; padding: 2px 5px; border-radius: 3px; font-weight: bold; font-size: 0.85em; }
+    /* 표 스타일 강제 적용 */
+    table { width: 100%; border-collapse: collapse; }
+    th { background-color: #f1f3f5 !important; color: black !important; border: 1px solid #dee2e6 !important; text-align: center !important; padding: 10px !important; }
+    td { border: 1px solid #dee2e6 !important; padding: 8px !important; text-align: center !important; color: black !important; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -47,6 +50,10 @@ def load_data():
         return df_a, df_m
     except Exception as e:
         st.error(f"데이터 로드 중 오류 발생: {e}"); return None, None
+
+# 세션 상태 초기화 (입금/정산 체크용)
+if 'done_list' not in st.session_state:
+    st.session_state.done_list = set()
 
 if 'logged_in' not in st.session_state:
     st.session_state['logged_in'] = False
@@ -85,10 +92,7 @@ else:
             participants = sorted([p for p in pd.concat([filtered_df['판매자'], filtered_df['구매자']]).dropna().unique() if str(p).strip() != ""])
             selected_person = st.sidebar.selectbox(f"👤 고객 선택 ({len(participants)}명)", ["선택하세요"] + participants)
 
-        if st.sidebar.button("로그아웃"):
-            st.session_state['logged_in'] = False; st.rerun()
-
-        # --- [사이드바 이벤트 명단] ---
+        # 사이드바 이벤트 명단
         st.sidebar.write("---")
         st.sidebar.subheader("💎 배송비 이벤트 명단")
         def get_event_total(nickname):
@@ -105,7 +109,6 @@ else:
             tag = "30% 지원" if v['amt'] < 5000000 else "50% 지원" if v['amt'] < 10000000 else "🔥 전액지원"
             st.sidebar.markdown(f'<div class="vvip-box"><strong>{v["nick"]}</strong> <span class="benefit-tag">{tag}</span><br>누적: {v["amt"]:,.0f}원</div>', unsafe_allow_html=True)
 
-        # --- [메인 화면 출력] ---
         if selected_person == "SUMMARY_MODE":
             st.title(date_title)
             if not filtered_df.empty:
@@ -130,49 +133,55 @@ else:
                 
                 st.write("---")
                 
-                # --- [수정: 표 내부 체크박스 & 실시간 차감] ---
                 col_in, col_out = st.columns(2)
                 
                 with col_in:
                     st.subheader("📩 입금 받을 돈 (구매자)")
-                    df_pay_in = pd.DataFrame(pay_in).sort_values('고객명')
-                    df_pay_in.insert(0, "입금확인", False)
+                    remain_in_val = sum(i['금액'] for i in pay_in if f"in_{selected_date}_{i['고객명']}" not in st.session_state.done_list)
+                    st.markdown(f"<div class='total-highlight'>남은 미입금 합계: {remain_in_val:,.0f}원</div>", unsafe_allow_html=True)
                     
-                    # 데이터 에디터 출력
-                    edited_in = st.data_editor(
-                        df_pay_in,
-                        column_config={"입금확인": st.column_config.CheckboxColumn(default=False), "금액": st.column_config.NumberColumn(format="%d원")},
-                        disabled=["고객명", "금액"],
-                        hide_index=True,
-                        key="editor_in",
-                        use_container_width=True
-                    )
-                    
-                    # 체크 안 된 금액 합산
-                    in_sum = edited_in[edited_in["입금확인"] == False]["금액"].sum()
-                    st.markdown(f"<div class='total-highlight'>남은 미입금 합계: {in_sum:,.0f}원</div>", unsafe_allow_html=True)
+                    # 수동 표 생성
+                    st.markdown("<table><tr><th style='width:20%'>상태</th><th style='width:40%'>닉네임</th><th style='width:40%'>금액</th></tr>", unsafe_allow_html=True)
+                    for i in sorted(pay_in, key=lambda x: x['고객명']):
+                        key = f"in_{selected_date}_{i['고객명']}"
+                        is_done = key in st.session_state.done_list
+                        bg_color = "#f1f3f5" if is_done else "white"
+                        text_style = "text-decoration: line-through; color: #adb5bd;" if is_done else "font-weight: bold;"
+                        btn_label = "취소" if is_done else "입금완료"
+                        
+                        cols = st.columns([1, 2, 2])
+                        if cols[0].button(btn_label, key=f"btn_{key}"):
+                            if is_done: st.session_state.done_list.remove(key)
+                            else: st.session_state.done_list.add(key)
+                            st.rerun()
+                        cols[1].markdown(f"<div style='text-align:center; padding:5px; {text_style}'>{i['고객명']}</div>", unsafe_allow_html=True)
+                        cols[2].markdown(f"<div style='text-align:center; padding:5px; {text_style}'>{i['금액']:,.0f}원</div>", unsafe_allow_html=True)
+                    st.markdown("</table>", unsafe_allow_html=True)
 
                 with col_out:
                     st.subheader("💵 정산 드릴 돈 (판매자)")
-                    df_pay_out = pd.DataFrame(pay_out).sort_values('고객명')
-                    df_pay_out.insert(0, "정산완료", False)
+                    remain_out_val = sum(i['금액'] for i in pay_out if f"out_{selected_date}_{i['고객명']}" not in st.session_state.done_list)
+                    st.markdown(f"<div class='total-highlight'>남은 미정산 합계: {remain_out_val:,.0f}원</div>", unsafe_allow_html=True)
                     
-                    # 데이터 에디터 출력
-                    edited_out = st.data_editor(
-                        df_pay_out,
-                        column_config={"정산완료": st.column_config.CheckboxColumn(default=False), "금액": st.column_config.NumberColumn(format="%d원")},
-                        disabled=["고객명", "금액"],
-                        hide_index=True,
-                        key="editor_out",
-                        use_container_width=True
-                    )
-                    
-                    # 체크 안 된 금액 합산
-                    out_sum = edited_out[edited_out["정산완료"] == False]["금액"].sum()
-                    st.markdown(f"<div class='total-highlight'>남은 미정산 합계: {out_sum:,.0f}원</div>", unsafe_allow_html=True)
+                    st.markdown("<table><tr><th style='width:20%'>상태</th><th style='width:40%'>닉네임</th><th style='width:40%'>금액</th></tr>", unsafe_allow_html=True)
+                    for i in sorted(pay_out, key=lambda x: x['고객명']):
+                        key = f"out_{selected_date}_{i['고객명']}"
+                        is_done = key in st.session_state.done_list
+                        bg_color = "#f1f3f5" if is_done else "white"
+                        text_style = "text-decoration: line-through; color: #adb5bd;" if is_done else "font-weight: bold;"
+                        btn_label = "취소" if is_done else "정산완료"
+                        
+                        cols = st.columns([1, 2, 2])
+                        if cols[0].button(btn_label, key=f"btn_{key}"):
+                            if is_done: st.session_state.done_list.remove(key)
+                            else: st.session_state.done_list.add(key)
+                            st.rerun()
+                        cols[1].markdown(f"<div style='text-align:center; padding:5px; {text_style}'>{i['고객명']}</div>", unsafe_allow_html=True)
+                        cols[2].markdown(f"<div style='text-align:center; padding:5px; {text_style}'>{i['금액']:,.0f}원</div>", unsafe_allow_html=True)
+                    st.markdown("</table>", unsafe_allow_html=True)
 
                 st.write("---")
-                # 랭킹 분석 (st.table 유지)
+                # 랭킹 분석
                 rank_l, rank_r = st.columns(2)
                 with rank_l:
                     st.subheader("🏆 오늘자 구매왕")
