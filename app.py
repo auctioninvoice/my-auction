@@ -86,6 +86,9 @@ if not st.session_state['logged_in']:
 else:
     df, df_members = load_data()
     if df is not None:
+        if st.sidebar.button("🔄 최신 데이터 불러오기", use_container_width=True):
+            st.cache_data.clear()  # 저장된 데이터를 강제로 삭제
+            st.rerun()             # 화면을 다시 그려서 구글 시트에서 새로 가져옴
         st.sidebar.subheader("🔎 조회 설정")
         view_mode = st.sidebar.radio("모드 선택", ["일별 조회", "기간별 조회", "일별 요약", "월별 요약", "연간 요약", "👤 회원 정보 조회"])
         available_dates = sorted(df['경매일자'].unique(), reverse=True)
@@ -544,3 +547,4 @@ else:
                     else: st.write("구매 내역 없음")
             else:
                 st.info("👈 왼쪽에서 날짜와 고객을 선택해 주세요.")
+
