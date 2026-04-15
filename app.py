@@ -208,7 +208,7 @@ if daily_list:
     st.table(daily_df)
 else:
     st.info("거래 내역이 없습니다.")
-            t1, t2 = st.tabs(["🛍️ 전체 구매 내역", "📦 전체 판매 내역"])
+t1, t2 = st.tabs(["🛍️ 전체 구매 내역", "📦 전체 판매 내역"])
             with t1:
                 if not p_buy.empty:
                     p_buy_disp = p_buy[['경매일자', '품목', '가격', '판매자']].sort_values('경매일자', ascending=False).reset_index(drop=True)
