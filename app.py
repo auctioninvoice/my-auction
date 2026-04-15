@@ -174,6 +174,40 @@ else:
                 """, unsafe_allow_html=True)
 
             st.write("---")
+            st.subheader("📊 일별 정산 금액")
+
+all_dates = pd.concat([p_buy['경매일자'], p_sell['경매일자']]).dropna().unique()
+daily_list = []
+
+for d in sorted(all_dates):
+    day_buy = p_buy[p_buy['경매일자'] == d]['가격'].sum()
+    day_sell = p_sell[p_sell['경매일자'] == d]['가격'].sum()
+    
+    buy_fee_day = 0 if is_exempt else int(day_buy * DEFAULT_BUY_FEE_RATE)
+    sell_fee_day = int(day_sell * SELL_FEE_RATE)
+    
+    buy_total = day_buy + buy_fee_day
+    sell_total = day_sell - sell_fee_day
+    balance = sell_total - buy_total
+    
+    daily_list.append({
+        "날짜": get_ko_date(d),
+        "판매정산": sell_total,
+        "구매금액": buy_total,
+        "정산금액": balance
+    })
+
+if daily_list:
+    daily_df = pd.DataFrame(daily_list).sort_values("날짜", ascending=False).reset_index(drop=True)
+    daily_df.index += 1
+
+    daily_df["판매정산"] = daily_df["판매정산"].map('{:,.0f}원'.format)
+    daily_df["구매금액"] = daily_df["구매금액"].map('{:,.0f}원'.format)
+    daily_df["정산금액"] = daily_df["정산금액"].map('{:+,.0f}원'.format)
+
+    st.table(daily_df)
+else:
+    st.info("거래 내역이 없습니다.")
             t1, t2 = st.tabs(["🛍️ 전체 구매 내역", "📦 전체 판매 내역"])
             with t1:
                 if not p_buy.empty:
